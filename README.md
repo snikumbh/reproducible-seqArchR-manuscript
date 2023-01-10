@@ -4,10 +4,10 @@
 **Citation information:** <Insert here>
 
 
-**seqArchR links:**
-*Bioconductor:* http://www.bioconductor.org/packages/seqArchR
-*Github link:* https://github.com/snikumbh/seqArchR
-*Zenodo link:* https://doi.org/10.5281/zenodo.5003648
+**seqArchR links**
+- *Bioconductor:* http://www.bioconductor.org/packages/seqArchR
+- *Github link:* https://github.com/snikumbh/seqArchR
+- *Zenodo link:* https://doi.org/10.5281/zenodo.5003648
 
 1. `git clone` this repository
 
@@ -18,6 +18,8 @@
   in this repository
 
 Below is the detailed explanation of the folder structure and files.
+
+
 
 
 ==================  TOP-LEVEL ==================
