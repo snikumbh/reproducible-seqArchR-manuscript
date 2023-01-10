@@ -1,0 +1,2083 @@
+---
+title: "Identifying promoter sequence architectures via a chunking-based algorithm using non-negative matrix factorisation"
+author: 
+ - "Sarvesh Nikumbh^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, s.nikumbh@imperial.ac.uk]"
+ - "Boris Lenhard^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, b.lenhard@imperial.ac.uk]"
+date: "Timestamp: `r format(Sys.time())`"
+geometry: "left=2cm,right=2cm,top=1.5cm,bottom=2cm"
+bibliography: seqArchR-bibliography.bib
+# csl: genome-biology.csl
+link-citations: yes
+linkcolor: blue
+output:
+  bookdown::pdf_document2:
+    includes:
+      in_header: mystyles.sty
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    anchor_sections: true
+    number_tables: true
+    keep_tex: true
+  bookdown::html_document2:
+    code_folding: hide
+    lof: true
+    toc: true
+    toc_float: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+    keep_md: yes
+editor_options: 
+  markdown: 
+    wrap: sentence
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dev = 'svg', include=TRUE, eval=TRUE)
+
+```
+\newpage
+
+
+# Abstract {.unnumbered}
+
+Animal promoters come in different classes characterised by enrichment of a 
+variety of features in the promoter sequence.
+The consequent inherent diversity of mechanisms for transcriptional regulation 
+of genes is still poorly understood.
+This is in part due to lack of comprehensive, *de novo* characterisation of 
+these promoter sequence architectures.
+Here, we present seqArchR, an unsupervised learning approach using 
+non-negative matrix factorisation for *de novo* identification of diverse 
+promoter sequence architectures.
+seqArchR is available as an R/Bioconductor package and can be accessed 
+at: [http://www.bioconductor.org/packages/seqArchR](http://www.bioconductor.org/packages/seqArchR).
+
+
+
+
+```{r set-paths-libs, include=FALSE}
+
+library(reshape2)
+library(patchwork)
+library(readr)
+if(requireNamespace("magick", quietly = TRUE)){
+  library(magick)
+}
+
+library(ggplot2)
+library(ggpubr)
+
+## Note: always keep pdf to the end
+use_device <- c("png", "tiff", "svg", "pdf")
+use_tags <- 'A' # change this when different tag levels are required across all plots
+use_nest <- '1' # for nested tags
+fig_use_cores <- 16
+
+figures_path <- file.path("figures")
+data_path <- file.path("experiments", "data")
+results_path <- file.path("experiments", "results")
+
+archR_simdata_data_path <- file.path(data_path, "simulated-data")
+archR_simdata_results_path <- file.path(results_path, "simulated-data-original-final-for-paper")
+
+archR_simdata_results_path <- file.path(results_path,
+                                "simulated-data-archR-v0.1.8-bound-1e08", 
+                                paste0(fig_use_cores, "cores"))
+
+nplb_simdata_results_path <- file.path(results_path, "comparison-approaches",
+                                paste0(fig_use_cores, "cores"), "simulated-data")
+
+### Drosophila melanogaster
+### 
+dm_sample_names <- paste0("RAL28_", c("2_to_4", "6_to_8", "10_to_12_sample12"))
+archR_dm_results_path <- file.path(results_path,
+                                "drosophila-schor2017", "with_archR_v0.1.8")
+
+archR_dm_chen_results_path <- file.path(results_path,
+                                "drosophila-chen2014", "with_archR_v0.1.8")
+
+dm_result_serial_run_path <- file.path(archR_dm_chen_results_path, 
+    "archR_result_drosophila-chen2014_serial_run_modSelType_stability_chunkSize_2000_bound_1e-08_collate_FTFFF")
+
+## store result_directory path
+dm_result_dir_path <- vector("list", length(dm_sample_names)) 
+names(dm_result_dir_path) <- dm_sample_names
+
+for(sn in dm_sample_names){
+    dm_result_dir_path[[sn]] <- file.path(archR_dm_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+### Danio rerio
+### 
+zf_sample_names <- c("64_cells", "dome_30perc_epiboly", "prim6")
+archR_zf_results_path <- file.path(results_path,
+                                "zebrafish-nepal2013", "with_archR_v0.1.8")
+
+## store result_directory path
+zf_result_dir_path <- vector("list", length(zf_sample_names)) 
+names(zf_result_dir_path) <- zf_sample_names
+
+for(sn in zf_sample_names){
+    zf_result_dir_path[[sn]] <- file.path(archR_zf_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+### Homo sapiens
+### 
+hg_sample_names <- c("human_cellGroup_merged")
+archR_hg_results_path <- file.path(results_path,
+                                "human", "newly_processed", "minTPM_1")
+
+## store result_directory path
+hg_result_dir_path <- vector("list", length(hg_sample_names)) 
+names(hg_result_dir_path) <- hg_sample_names
+
+for(sn in hg_sample_names){
+    hg_result_dir_path[[sn]] <- file.path(archR_hg_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+```
+
+# Background {#background}
+
+Promoter sequences are portions of DNA flanking the transcription start site 
+(TSS) of a gene.
+Typically, a window spanning $-40$ to $+40$ base pairs (bp) (upstream denoted 
+by '$-$' and downstream by '$+$') relative to the TSS is called the core 
+promoter sequence.
+Further upstream from $-40$ to $-250$ bp is called the proximal promoter 
+region [@butler2002rna]. 
+These regions work together with enhancers \textemdash\space which can be 
+anywhere in the genome, upstream or downstream of the gene they affect 
+\textemdash\space to regulate gene expression. 
+Transcription of genes by RNA polymerase II (RNA PolII) happens by assembling 
+the pre-initiation complex of RNA PolII and different basal transcription 
+factors (TFs) [@kadonaga2012perspectives].
+These TFs recognise different sequence motifs present in the core promoters 
+for binding.
+
+
+However, there is no universal promoter architecture. 
+Not all motif elements are present in all core promoters.
+For instance, \texttt{TATA}-box, which binds the \texttt{TATA}-box binding 
+protein (TBP), is a popular textbook example of a core promoter motif.
+But only \~20% of the known core promoters of protein-coding genes in animals 
+contain a TATA-box [@kadonaga2012perspectives]. 
+Furthermore, transcription initiation can be 'focused' or 'dispersed' 
+[@carninci2006genome; @juven2010regulation]. 
+In focused transcription, there is usually a single nucleotide (nt) position 
+where most of the transcription begins. 
+In dispersed transcription there are multiple weaker start positions spread 
+up to \~100 bp within the promoter, and the dominant position is determined 
+by the position of $+1$ nucleosome [@haberle2014shifting; @dreos2016influence].
+Sharp initiation is associated with tissue-specific promoters, while broad 
+promoters are found with constitutively expressed promoters and a subset of 
+tissue restricted ones.
+The most important realisation about different promoter architectures is that 
+there is a TSS selection determining sequence element at near-fixed distance 
+from the dominant TSS.
+Different TSS selection mechanisms suggest that there are multiple fundamentally 
+different promoter architectures, and that they are functionally specialised.
+Heterogeneity in architectures at the organism-level gives rise to additional 
+diversity [@carninci2006genome;@narlikar2014multiple;@haberle2016promoter].
+Also, the advent of chromatin interaction experiments in the last decade has 
+enabled better exploration of the enhancer-promoter interaction specificity.
+Thus, studying and defining the promoter sequence architectures that give rise 
+to such specificities in transcription regulation mechanisms is an important step.
+
+```{r archR-schematic-bio, fig.align="center", out.width = "140%", out.height="30%", echo=FALSE, include=TRUE, fig.cap="Schema depicting how across organisms, different promoter architectures have a TSS-selection determining sequence element at near-fixed distance from their dominant transcription start sites."}
+
+
+use_fname <- file.path(figures_path, 
+                    "seqArchR-figure1-bio-schematic-crop.pdf")
+if(file.exists(use_fname) && !knitr::is_html_output()){
+    
+    knitr::include_graphics(use_fname)
+}
+```
+
+Promoter sequence architectures are not always characterised just by occurrences 
+of short sequence motifs but at times also by the sequence composition, for 
+example, \texttt{GC}-richness or CpG island promoters.
+Using motif finding algorithms to process promoter sequences, as is traditional, 
+has a limitation.
+First, they cannot identify differences in architectures stemming from sequence 
+compositions.
+Second, in scenarios where promoter sequences are indeed characterised by motifs, 
+scanning the sequences for motifs from a database (when available) limits the 
+study to looking at only known motifs.
+These known motifs often do not explain much of the diversity among the promoter 
+sequences.
+In case of novel organisms for whom no databases of known motifs exist yet, a 
+*de novo* motif search can be performed.
+But most motif finding algorithms expect the motifs to be statistically 
+over-represented in the promoter sequences in comparison to background sequences.
+Such approaches can fail to identify motifs that are present in a relatively 
+small subset of sequences and therefore not statistically `significant'.
+They do not provide precise position information of the motifs.
+Furthermore, they also often miss discovering low-complexity or degenerate 
+motifs.
+Thus, approaches that can overcome the above limitations in using motif finding 
+algorithms and identify architectures in promoter sequences *de novo* and  are 
+required to study promoter sequence architectures.
+
+Here, we present seqArchR, an unsupervised approach using non-negative matrix 
+factorisation (NMF) [@lee1999learning] for *de novo* characterisation of 
+diversity in promoter sequence architectures. 
+seqArchR does not require background sequences.
+It needs no information on the kind (motifs- or sequence composition-based) or 
+number of architectures expected to be present in the input sequences.
+When architectures characterised by motifs may be present, it does not require 
+any specifications on the number of motifs, their sizes or any gaps in motifs 
+or between them when they work in a cooperative fashion.
+seqArchR's chunking-based approach can unravel architectures harboured by 
+very few sequences out of the whole input.
+This is often helpful to precisely tease out minor positional variations in 
+features which can be functionally relevant.
+For instance, the spacing between the `TATA`-box and the TSS is known to 
+correlate with tissue specificity [@ponjavic2006transcriptional].
+
+```{r serial-run-chen2014, include=FALSE, echo=FALSE}
+
+chen2014_result_serial <- readRDS(file.path(dm_result_serial_run_path, 
+    "archRresult.rds"))
+
+unlist(chen2014_result_serial$timeInfo)
+cumsum(chen2014_result_serial$timeInfo)
+
+```
+
+seqArchR is inspired by 'No promoter left behind' (NPLB) [@mitra2016nplb], 
+the current state-of-the-art method identifying such sequence architectures 
+*de novo* from aligned promoter sequences. 
+NPLB uses a Bayesian approach to jointly learn features and important positions 
+in an architecture. 
+It identifies the number of architectures best explaining the complete set of
+promoter sequences by  cross-validation where the model with the highest 
+loglikelihood is chosen.
+NPLB has a relatively long execution time.
+It takes about 10 hours to process ca. 6600 promoter sequences in Drosophila
+compared to seqArchR’s 42 minutes when run serially to obtain comparable results.
+Additionally, seqArchR gives the user complete control over the granularity of 
+identified clusters which is often useful in the exploratory setting.
+
+
+
+Since @lee1999learning's work, NMF has become a popular technique finding wide 
+applications across domains. 
+Some earlier applications of NMF in biology include those for inference of 
+biological processes [@brunet2004metagenes], sequence motifs characterisation 
+[@previousNMFonSeqs], and multi-omics analysis [@stein2018enter].
+In particular, @previousNMFonSeqs use NMF for characterizing sequence data 
+sets by identifying position-dependent motifs in them.
+In their approach, the input matrix encodes the counts of the *k*-mers and 
+their occurrence positions in the given collection of sequences.
+This approach assumes that all sequences in the data set contain the same 
+motifs or minor variations.
+Although this approach suits well for identifying protein-DNA binding sites 
+from ChIP-seq like data, it is unimodal and does not cater to the scenario of 
+multiple modes of protein-DNA binding [@mumodLeelavati].
+In comparison, seqArchR makes no such assumptions and models the collection 
+of sequences to harbour any number of architectures, each with an unknown 
+number of motifs\textendash\space or non-motifs\textendash based sequence 
+features. 
+
+This paper describes seqArchR in complete detail and presents results from 
+computational experiments demonstrating its efficacy.
+We compare seqArchR with NPLB in analyzing a simulated dataset where the 
+ground truth of clusters/architectures is known, and a set of CAGE-based core 
+promoter sequences from @chen2014comparative (Supplementary). 
+Furthermore, we show results from processing CAGE-based promoter sequences in 
+fruit fly [@schor2017promoter], zebrafish [@nepal2013dynamic] and human 
+[@encode2012integrated; @encodedataportal] to demonstrate seqArchR's ability 
+to seamlessly identify heterogeneous architectures across organisms with large 
+differences in promoter sequence composition.
+seqArchR is provided as an R/Bioconductor package accessible at 
+[https://www.bioconductor.org/packages/seqArchR](https://www.bioconductor.org/packages/seqArchR) 
+or [https://snikumbh.github.io/seqArchR](https://snikumbh.github.io/seqArchR).
+
+
+
+
+# Results {#results}
+
+
+```{r archR-algo-figure, fig.align="center", out.width="100%", out.height="40%", echo=FALSE, include=TRUE, fig.cap="Overview of seqArchR. (\\textbf{A}) Schematic showing seqArchR's chunking-based, iterative algorithm. (\\textbf{B}) Schematic describing input to seqArchR and the factorisation output. For each chunk of sequences being processed with NMF, the sequences are represented as a one-hot encoded matrix (hence, $0/1$ matrix), denoted in the schematic by matrix $V_{p\\times n}$; matrices $W_{p\\times k}$ and $H_{k \\times n}$ are respectively the basis matrix and coefficients matrix obtained upon factorisation. $n$ denotes the number of input sequences, $p$, the number of features, $k$, the optimal number of dimensions selected for the low-rank representation and $L$, the length of the input sequences. The schematic depicts one-hot encoding of the dinucleotide profile of sequences. One can use the mono- or dinucleotide profile of sequences."}
+
+###
+# png_fname <- file.path("figures", "archR_algorithm_static_illustrator_cropped.png")
+# if(file.exists(png_fname) && knitr::is_html_output()){
+#     knitr::include_graphics(png_fname)
+# }
+
+### 
+pdf_fnames <- paste0(file.path(figures_path, 
+                    c("archR_algorithm_landscape_no_box-crop.pdf", 
+                        "archR_figure1_part_no_box-crop.pdf")))
+# fig1_pdf_name <- file.path(figures_path, "samarth_archR_figure1.pdf")
+use_fname <- file.path(figures_path, "archR_figure1_no_box_new-crop.pdf")
+
+if(FALSE && requireNamespace("magick", quietly = TRUE)){
+  if(requireNamespace("pdftools", quietly = TRUE)){
+    # pdf_fnames <- paste0(file.path(figures_path, 
+    #                               c("archR_algorithm_landscape_no_box-crop.pdf",
+    #                                 "archR_figure1_part_no_box-crop.pdf")))
+
+    
+    ## algorithm figure part
+    fig1 <- cowplot::ggdraw() + 
+            cowplot::draw_image(magick::image_read_pdf(pdf_fnames[1], density = 600))
+    
+    ## NMF explanation figure part
+    fig2 <- cowplot::ggdraw() + 
+            cowplot::draw_image(magick::image_read_pdf(pdf_fnames[2], density = 600))
+    
+    comb_fig <- cowplot::plot_grid(fig1, NULL, fig2, 
+                                   label_fontface = "plain", label_size = 8, 
+                                   labels = c("A", NULL, "B"), 
+                                   rel_widths = c(1, 0.1, 1),
+                                   align="hv", nrow = 1, 
+                                   vjust = c(4,4), hjust = c(0, -2))
+    
+    ## May have to separately crop the figure again using pdfcrop on the 
+    ## command line                       
+    
+    cowplot::ggsave2(use_fname, 
+                     plot = comb_fig, device = "pdf", dpi = 600, 
+                     width = 15, height = 15, units = "cm")
+    # comb_fig
+  }
+}
+
+if(knitr::is_html_output()){
+    comb_fig
+}
+
+if(file.exists(use_fname) && !knitr::is_html_output()){
+    # use_fig1_pdf_name <- file.path(figures_path, "archR_figure1_no_box_new-crop.pdf")
+    knitr::include_graphics(use_fname)
+}
+
+
+
+
+```
+
+
+
+## seqArchR: a novel algorithm using non-negative matrix factorisation for *de novo* identification of sequence architectures
+
+
+
+To classify promoters based on their fixed-position determinants, we developed, 
+seqArchR , a chunking-based iterative algorithm using NMF for de novo 
+identification of sequence architectures.
+The input to seqArchR is a $(0,1)$-matrix which is a one-hot encoded 
+representation of dinucleotide profiles of a gapless alignment of DNA sequences.
+As shown in the schematic in Figure \@ref(fig:archR-algo-figure), seqArchR 
+processes the whole collection of input sequences one chunk (subset of sequences) 
+at a time.
+The $(0,1)$-matrix for each chunk of sequences is processed with NMF.
+NMF decomposes the matrix into two low-rank matrices \textemdash\space the 
+basis matrix and the coefficients matrix.
+Columns of the basis matrix (a.k.a. basis vectors) represent the different 
+architectures, and along its rows are the loadings for the features per 
+architecture (see Figure \@ref(fig:archR-algo-figure), panel B).
+On the other hand, in the coefficients matrix, where each column corresponds 
+to one sequence, its rows hold the per-sequence coefficients for each 
+architecture.
+A sequence with a relatively high coefficient for an architecture is expected 
+to harbour features captured by that architecture.
+For example, consider matrix $H_{k\times n}$ in Figure 
+\@ref(fig:archR-algo-figure)B, the first and second sequence have the highest 
+coefficient for architecture I among all four architectures, and are expected 
+to harbour sequence features prominent for architecture I (see corresponding 
+to the sequence logos on the top). 
+Because the input matrix already encodes the position information of the 
+nucleotides in the sequences, the factorisation identifies the characteristic 
+architectures (combinations of nucleotides over-represented at specific 
+positions) describing different subset of sequences.
+
+Per chunk, seqArchR performs a model selection procedure to find the 
+appropriate number of basis vectors suitable to represent the set of sequences 
+in the chunk in a lower-dimensional space.
+Two model selection procedures are available: stability\textendash\space and 
+cross-validation\textendash based (see Section [Methods](#methods)  for details).
+This decomposition is used to obtain clusters of sequences characterised by a 
+diverse set of sequence features.
+
+
+After all chunks have been factorised and sequence clusters obtained, similar 
+clusters from different chunks are collated.
+Similarity of clusters is judged based on the similarity of corresponding NMF 
+basis vectors
+(see \@ref(methods) for additional details). 
+The collated set of clusters may need further processing to weed out any 
+mis-assignments or to crisply identify architectures with shared motifs or 
+those with minor positional shifts.
+In this case, seqArchR iterates over the collated clusters treating each of 
+them as separate chunks and repeating the above steps.
+The number of iterations required depends on the structure in the input data.
+The algorithm is described in detail in Section \@ref(methods).
+
+
+
+## seqArchR is fast and attains high accuracy on simulated data {#sim-data-results}
+
+In order to demonstrate seqArchR's efficacy, we performed computational 
+experiments on simulated data as follows.
+We generated a set of 1000 simulated DNA sequences, each 100 nucleotides long.
+All nucleotides at any position in these sequences appeared with a uniform 
+probability of 0.25.
+We planted different motifs at specific positions in these sequences such that 
+they resulted in four clusters with as many architectures.
+These are described in Table \@ref(tab:table-simulated-data).
+
+| Cluster |               Motifs                | Occurrence position | \#Sequences |
+|---------|:-----------------------------------:|:-------------------:|:-----------:|
+| A       |   Dinucleotide repeat \texttt{AT}   |     every 10 nt     |     200     |
+| B       | \texttt{GATTACA} and \texttt{GAGAG} |      40 and 60      |     350     |
+| C       |           \texttt{GAGAG}            |         60          |     150     |
+| D       |  \texttt{TCAT} and \texttt{GAGAG}   |      40 and 80      |     300     |
+
+: (\#tab:table-simulated-data) Sequence motifs corresponding to four architectures/clusters in the simulated data.
+
+All motifs except those in cluster A were planted with mutations, as follows.
+For planting a motif in a sequence, any one position in the motif was randomly 
+selected for mutation. 
+The nucleotide at this position was then mutated with probability (mutation 
+rate) 
+{`r mutpos <- 1:3;mutrate <- seq(0.1,0.5,by=0.1);paste(mutrate, collapse=", ")`}.
+This resulted in five variations of DNA sequences -- one mutated position 
+$\times$ five mutation rates for all motifs. 
+This procedure was repeated, selecting two and three positions for mutation 
+per motif (instead of one), giving us a total of 15 variations.
+For each of these variations, we performed experiments with chunk sizes 
+{`r chunkSizes <- c(200,500,1000);paste(chunkSizes, collapse = ", ")`}.
+Thus, all parameter combinations resulted in a total of 
+`r length(mutpos)*length(mutrate)*length(chunkSizes)` datasets to be processed 
+by seqArchR.
+For robustness, each of these was repeated 10 times with different random seeds.
+Here, we used stability-based model selection.
+
+
+For comparison, we also processed these `r length(mutpos)*length(mutrate)` 
+datasets with NPLB [@mitra2016nplb].
+Performance results of seqArchR and NPLB are presented next.
+All reported timing information is for experiments performed in parallel on 
+`r fig_use_cores` cores of Intel(R) Xeon(R) Gold 6154 CPUs.
+
+```{r read-input-TSVfile, include=FALSE}
+
+filename <- file.path(archR_simdata_results_path, "archR_result_simulated_data_summary.tsv")
+archR_simdata_results <- readr::read_tsv(file = filename, col_names = TRUE, 
+                                        col_types = cols())
+
+filenames <- list.files(path = "/mnt/biggley/home/sarvesh/projects/promoter-architectures-all/clustering-promoter-architectures/promArch_only_for_biorxiv_manuscript/promArch/manuscript/biorxiv/experiments/results/simulated-data-archR-v0.1.8-bound-1e08/48cores",
+    pattern = "*_mem.*.tsv", full.names = TRUE)
+
+mem_tsv_list <- lapply(filenames, function(f){
+    temp_tsv <- readr::read_tsv(file = f, col_names = TRUE, col_types = cols())
+    temp_tsv
+})
+
+archR_simdata_results_mem <- dplyr::bind_rows(mem_tsv_list)
+archR_simdata_results_mem$index <- seq(nrow(archR_simdata_results_mem))
+
+# filename <- file.path("/mnt/biggley/home/sarvesh/projects/promoter-architectures-all/clustering-promoter-architectures/promArch_only_for_biorxiv_manuscript/promArch/manuscript/biorxiv/experiments/results/simulated-data-archR-v0.1.8-bound-1e08/48cores", "archR_result_simulated_data_summary_mem2.tsv")
+# archR_simdata_results_mem1 <- readr::read_tsv(file = filename, col_names = TRUE, 
+#                                         col_types = cols())
+
+
+# filename <- file.path("/mnt/biggley/home/sarvesh/projects/promoter-architectures-all/clustering-promoter-architectures/promArch_only_for_biorxiv_manuscript/promArch/manuscript/biorxiv/experiments/results/simulated-data-archR-v0.1.8-bound-1e08/48cores", "archR_result_simulated_data_summary_mem3.tsv")
+# archR_simdata_results_mem2 <- readr::read_tsv(file = filename, col_names = TRUE, 
+#                                         col_types = cols())
+# 
+# archR_simdata_results_mem <- rbind(archR_simdata_results_mem1, archR_simdata_results_mem2)
+
+######
+filename <- file.path(nplb_simdata_results_path, "nplb_result_simulated_data_summary.tsv")
+nplb_simdata_results <- readr::read_tsv(file = filename, col_names = TRUE, 
+                                        col_types = cols())
+
+# Rename columns? because ggpubr doesn't have provision for renaming them in 
+# the legend on the fly
+
+# head(archR_simdata_results)
+```
+
+
+
+**Performance as adjusted Rand index (ARI).** 
+Performance is reported using the adjusted Rand index (ARI) which measures the 
+similarity between two clustering solutions or a clustering and ground truth 
+(when available), and is corrected for chance.
+As seen in Figure \@ref(fig:simdata-results)A, irrespective of the chunk size,
+seqArchR attains a high ARI value when the mutation rate and the number of 
+mutated motif positions is low.
+For any given chunk size, the performance degrades with increase in the mutation
+rate, while for the same mutation rate, increasing the number of mutated motif 
+positions hardly affects performance.
+For smaller chunk size, seqArchR's performance shows a slight increase in 
+variance with increase in mutation rate.
+With a larger chunk size, seqArchR demonstrates very low variance in 
+comparison to NPLB which shows high variance for all mutation rates.
+
+Figures \@ref(fig:simdata-results)E and F show the time taken (in minutes) 
+by seqArchR and NPLB.
+In Figure \@ref(fig:simdata-results)E, the colors denote time taken by 
+seqArchR to complete different iterations.
+We observe that processing the whole data in many, small chunks takes more 
+time overall.
+This is expected due to the following reason.
+For each chunk, the stability-based model selection procedure starts from 
+checking for just two clusters and continues checking further values until 
+the bounding threshold on the instability of identified cluster features is 
+satisfied (See more details in Section \@ref(archR-algorithm)).
+Since sequences from each cluster are distributed uniformly randomly across 
+the complete set of sequences, for each chunk, the optimum number of clusters 
+is expected to be around the true number of clusters.
+Thus, there is some redundancy of checking the lower values for every chunk.
+This redundancy reduces for larger chunk sizes.
+
+
+```{r ggpubr-ari-facet-grid, fig.align="center", out.height="100%", warning=FALSE, dpi=500, fig.cap="Quantitative assessment of performance of seqArchR on simulated data. (\\textbf{A}) Adjusted Rand index (ARI) attained by seqArchR with various parameter combinations on simulated data (data described in Table \\ref{tab:table-simulated-data}). Bar heights represent average over ten runs. As described, experiments are performed for chunk sizes 200, 500, and 1000 for different mutation rates (m) and number of mutated positions in motifs (p). All experiments with simulated data were performed with parameter \\textit{bound} set to 1e-08 for seqArchR. (\\textbf{B}) ARI values attained by NPLB. (\\textbf{C}) ARI attained by seqArchR for two scaled up versions of the simulated data: 5000 and 10000 sequences. See main text for more details. (\\textbf{D}, \\textbf{E}) Time taken by seqArchR and NPLB respectively to process simulated data."}
+
+relevant_idx <- dplyr::filter(archR_simdata_results, nSeqs == 1000)$index
+
+only_final <- TRUE ## set FALSE if ARI values for each iteration should be plotted
+
+ari_cols <- c('ARI_Iter1', 'ARI_Iter2', 'ARI')
+
+    
+ari_melted_df <- reshape2::melt(archR_simdata_results[relevant_idx,], 
+                    id.vars = c('chunkSize', 'mutpos', 'mutrate'),
+                    measure.vars = ari_cols[ifelse(only_final, 3, seq_len(3))]
+                )
+ari_melted_df$chunkSize <- ari_melted_df$chunkSize/1000
+
+paired_blues <- RColorBrewer::brewer.pal(3, "Paired")[1:2]
+
+archR_ari_pl1 <- ggpubr::ggbarplot(data = ari_melted_df, x = "mutrate", 
+                    y = "value",
+                    fill = paired_blues[1],
+                    size = 0.5, 
+                    color = paired_blues[1],
+                    facet.by = c("mutpos", "chunkSize"), 
+                    legend = ifelse(only_final, "top", "top"),
+                    ylim = c(0.25,1.05),
+                    xlab = "Mutation rate", 
+                    ylab = "Adjusted Rand index (ARI)",
+                    ggtheme = ggpubr::theme_pubr(),#theme_bw(base_size = 12),
+                    legend.title = "Stage",
+                    ## add params
+                    add = c("mean_sd", "jitter"),
+                    add.params = list(size = 0.8, color = paired_blues[2]),
+                    ## label params
+                    label = TRUE, lab.pos = "out", lab.vjust = -1.5,
+                    lab.nb.digits = 2, lab.size = 3.5,
+                    ##
+                    panel.labs = list(
+                        chunkSize = paste0("Chunk size = ", 
+                            levels(as.factor(ari_melted_df$chunkSize)), "K"),  
+                        mutpos = paste("p =", 1:3)),
+                    x.text.angle = 45, palette = "Paired")
+
+nSeqs_val <- c(5000, 10000)
+
+# archR_ari_pl2 <- lapply(nSeqs_val, function(x){
+#     ##
+#     relevant_idx <- dplyr::filter(archR_simdata_results, nSeqs == x)$index
+#     ari_melted_df2 <- reshape2::melt(archR_simdata_results[relevant_idx,],
+#                 id.vars = c('chunkSize', 'nSeqs'),
+#                 measure.vars = ari_cols[ifelse(only_final, 3, seq_len(3))]
+#                 )
+#     ari_melted_df2$nSeqs <- ari_melted_df2$nSeqs/1000
+#     ari_melted_df2$chunkSize <- ari_melted_df2$chunkSize/1000
+#     ##
+#     this_plot <-  ggpubr::ggbarplot(data = ari_melted_df2, 
+#                 x = "chunkSize", y = "value",
+#                 fill = paired_blues[1], 
+#                 size = 0.5, color = paired_blues[1],
+#                 facet.by = c("nSeqs"),
+#                 legend = "none",
+#                 ylim = c(0.25,1.05), 
+#                 xlab = ifelse(x == 10000, paste0("Chunk size ", 
+#                       expression('(x 1K)')), FALSE),
+#                 ylab = "ARI",
+#                 ggtheme = ggpubr::theme_pubr(),#theme_bw(base_size = 12),
+#                 legend.title = "Stage",
+#                 ## add params
+#                 add = c("mean_sd", "jitter"),
+#                 add.params = list(size = 0.8, color = paired_blues[2]),
+#                 ## label params
+#                 label = TRUE, lab.pos = "out", lab.vjust = -1.5,
+#                 lab.nb.digits = 2, lab.size = 3.5,
+#                 ##
+#                 panel.labs = list(nSeqs = 
+#                         # paste("p = 1, m = 0.1, n =", c(x))),
+#                         paste0("n = ", c(x)/1000, "K")),
+#                 x.text.angle = 0, palette = "Paired"
+#                 )
+#     })
+
+relevant_idx <- dplyr::filter(archR_simdata_results, nSeqs == c(5000, 10000))$index
+ari_melted_df2 <- reshape2::melt(archR_simdata_results[relevant_idx,],
+            id.vars = c('chunkSize', 'nSeqs'),
+            measure.vars = ari_cols[ifelse(only_final, 3, seq_len(3))]
+            )
+ari_melted_df2$nSeqsInK <- ari_melted_df2$nSeqs/1000
+ari_melted_df2$chunkSizeInK <- ari_melted_df2$chunkSize/1000
+
+archR_ari_pl2 <- ggpubr::ggbarplot(data = ari_melted_df2, 
+                x = "chunkSizeInK", y = "value",
+                fill = paired_blues[1], 
+                size = 0.5, 
+                color = paired_blues[1],
+                facet.by = c("nSeqsInK"),
+                legend = "none",
+                ylim = c(0.25,1.1), 
+                xlab = paste0("Chunk size ", expression('(x 1K)')),
+                ylab = "ARI",
+                ggtheme = ggpubr::theme_pubr(),#theme_bw(base_size = 12),
+                legend.title = "Stage",
+                ## add params
+                add = c("mean", "jitter"),
+                add.params = list(size = 0.8, color = paired_blues[2]),
+                ## label params
+                label = TRUE, lab.pos = "out", lab.vjust = -1.5,
+                lab.nb.digits = 2, lab.size = 3.5,
+                ##
+                panel.labs = list(nSeqsInK = 
+                                    paste0("n = ",
+                                           as.numeric(levels(as.factor(
+                                             ari_melted_df2$nSeqsInK
+                                             ))),
+                                           "K")),
+                x.text.angle = 0, palette = "Paired",
+                scales = "free_x", nrow = 2, ncol = 1
+                )
+
+
+
+####### ari plot for NPLB
+
+relevant_idx <- dplyr::filter(nplb_simdata_results, nSeqs == 1000 & nClusters != -1)$index
+
+# only_final <- TRUE ## set FALSE if ARI values for each iteration should be plotted
+# 
+# ari_cols <- c('ARI_Iter1', 'ARI_Iter2', 'ARI')
+
+    
+ari_melted_df <- reshape2::melt(nplb_simdata_results[relevant_idx,], 
+                    id.vars = c('nSeqs', 'mutpos', 'mutrate'),
+                    measure.vars = ari_cols[3]
+                )
+ari_melted_df$nSeqs <- ari_melted_df$nSeqs/1000
+
+paired_col <- RColorBrewer::brewer.pal(8, "Paired")[7:8]
+
+nplb_ari_pl1 <- ggpubr::ggbarplot(data = ari_melted_df, x = "mutrate", y = "value",
+                    fill = paired_col[1],
+                    size = 0.5, 
+                    color = paired_col[1],
+                    facet.by = c("mutpos", "nSeqs"), 
+                    legend = ifelse(only_final, "top", "top"),
+                    ylim = c(0.25,1.05),
+                    xlab = "Mutation rate", 
+                    ylab = FALSE,#  "Adjusted Rand index (ARI)",
+                    ggtheme = ggpubr::theme_pubr(),#theme_bw(base_size = 12),
+                    legend.title = "Stage",
+                    ## add params
+                    add = c("mean_sd", "jitter"),
+                    add.params = list(size = 0.8, color = paired_col[2]),
+                    ## label params
+                    label = TRUE, lab.pos = "out", lab.vjust = -1.5,
+                    lab.nb.digits = 2, lab.size = 3.5,
+                    ##
+                    panel.labs = list(
+                        nSeqs = paste0("n = 1K"),   
+                        mutpos = paste("p =", 1:3)),
+                    x.text.angle = 45,
+                    palette = "Paired")
+
+# nSeqs_val <- c(5000, 10000)
+##
+relevant_idx <- dplyr::filter(nplb_simdata_results, nSeqs != 1000 & nClusters != -1)$index
+ari_melted_df2 <- reshape2::melt(nplb_simdata_results[relevant_idx,],
+            id.vars = c('nSeqs'),
+            measure.vars = ari_cols[3]
+            )
+ari_melted_df2$nSeqs <- ari_melted_df2$nSeqs/1000
+##
+nplb_ari_pl2 <- ggpubr::ggbarplot(data = ari_melted_df2, 
+                x = "nSeqs", y = "value", width = 0.4,
+                fill = paired_col[1], 
+                size = 0.5, 
+                color = paired_col[1],
+                legend = "none",
+                ylim = c(0.25,1.05), 
+                xlab = paste0("#Sequences ", expression('(x 1K)')),
+                ylab = "ARI",
+                ggtheme = ggpubr::theme_pubr(),#theme_bw(base_size = 12),
+                legend.title = "Stage",
+                ## add params
+                add = c("mean_sd", "jitter"),
+                add.params = list(size = 0.8, color = paired_col[2]),
+                ## label params
+                label = TRUE, lab.pos = "out", lab.vjust = -1.5,
+                lab.nb.digits = 2, lab.size = 3.5,
+                ##
+                x.text.angle = 0, palette = "Paired"
+                )
+    
+
+####### Time info plot
+copy_simdata_results <- archR_simdata_results
+colnames(copy_simdata_results)[9:10] <- paste0(1:2)#paste0("Iteration", 1:2)
+#
+nSeqs_val <- c(1000, 5000, 10000)
+paired_blues <- RColorBrewer::brewer.pal(3, "Paired")[2:1]
+
+relevant_idx <- dplyr::filter(copy_simdata_results, nSeqs > 100)$index
+
+time_melted_df2 <- reshape2::melt(copy_simdata_results[relevant_idx,],
+                id.vars = c('chunkSize', 'nSeqs'),
+                # measure.vars = paste0("Iteration", 2:1)
+                measure.vars = paste0(1:2)
+                )
+time_melted_df2$chunkSizeInK <- time_melted_df2$chunkSize/1000
+time_melted_df2$nSeqsInK <- time_melted_df2$nSeqs/1000
+time_melted_df2$value <- time_melted_df2$value/60
+## ^ All timings are in seconds, convert to minutes
+
+
+
+archR_time_pl <- ggpubr::ggbarplot(data = time_melted_df2,
+                x = "chunkSizeInK", y = "value",
+                fill = "variable", 
+                width = 0.4, color = "variable",
+                facet.by = c("nSeqsInK"), 
+                ncol = length(levels(as.factor(
+                                             time_melted_df2$nSeqsInK
+                                             ))),
+                position = ggplot2::position_stack(reverse = TRUE),
+                ## add params
+                add = "mean",
+                ## label params, if any
+                ##
+                xlab = paste0("Chunk size ", expression('(x 1K)')),
+                ylab = "Time (minutes)", 
+                legend.title = "seqArchR iteration",
+                legend = c(0.15, 0.9),
+                font.legend = c(10),
+                panel.labs = list(nSeqsInK = 
+                                    paste0("#Sequences = ",
+                                           as.numeric(levels(as.factor(
+                                             time_melted_df2$nSeqsInK
+                                             ))),
+                                           "K")),
+                ggtheme = ggpubr::theme_pubr(),# theme_bw(base_size = 12),
+                x.text.angle = 0, palette = paired_blues,
+                scales = "free_x"
+                )
+
+# archR_time_pl <- ggpubr::facet(archR_time_pl, facet.by = "nSeqsInK")
+
+archR_time_pl <- archR_time_pl  + 
+                  scale_y_continuous(sec.axis = ggplot2::dup_axis(name = NULL)) +
+                  ggplot2::theme(legend.direction = "horizontal")
+
+
+# archR_time_pl_inset <- ggpubr::ggbarplot(data = time_melted_df2[relevant_idx,],
+#                 x = "chunkSize", y = "value",
+#                 fill = "variable", width = 0.4, color = "variable",
+#                 # facet.by = c("nSeqs"),
+#                 ## add params
+#                 add = c("mean"),
+#                 add.params = list(size= 0.3, color = paired_blues[2]),
+#                 ## label params, if any
+#                 ##
+#                 xlab = paste0("Chunk size ", expression('(x 1K)')),
+#                 #ifelse(x == 10000, "Chunk size", FALSE),
+#                 ylab = "Time (minutes)", #ifelse(x == 1000, "Time (seconds)", "Time (minutes)"),
+#                 # legend.title = "archR stage",
+#                 # legend = "top",#  "right",
+#                 # panel.labs = list(nSeqs = paste("n =", c(x))),
+#                 # panel.labs = list(nSeqs = 
+#                 #                     paste0("n = ",    
+#                                              as.numeric(levels(as.factor(time_melted_df2$nSeqs)))/1000, 
+#                 #                            "K")),
+#                 ggtheme = ggpubr::theme_pubr(),# theme_bw(base_size = 12),
+#                 x.text.angle = 0, palette = "Paired",
+#                 scales = "free_x"
+#                 # ylim = c(0,16)
+#                 )
+
+
+# archR_time_pl <- lapply(nSeqs_val, function(x){
+#     ##
+#     relevant_idx <- dplyr::filter(archR_simdata_results, nSeqs == x)$index
+#     time_melted_df2 <- reshape2::melt(copy_simdata_results[relevant_idx,],
+#                 id.vars = c('chunkSize', 'nSeqs'),
+#                 measure.vars = paste0("Iteration", 2:1)
+#                 # This is iter2 followed by iter1 so that stacked bar plot has 
+#                 # the right order
+#                 )
+#     time_melted_df2$chunkSize <- time_melted_df2$chunkSize/1000
+#     if(x == 1000){
+#       relevant_idx <- which(time_melted_df2$nSeqs == 1000)
+#       time_melted_df2$value[relevant_idx] <- time_melted_df2$value[relevant_idx]/60
+#     }
+#     ##
+#     this_plot <- ggpubr::ggbarplot(data = time_melted_df2,
+#                 x = "chunkSize", y = "value",
+#                 fill = "variable", width = 0.4, color = "variable",
+#                 facet.by = c("nSeqs"),
+#                 ## add params
+#                 add = c("mean"),
+#                 add.params = list(size= 0.3, color = paired_blues[2]),
+#                 ## label params, if any
+#                 ##
+#                 xlab = "Chunk size", #ifelse(x == 10000, "Chunk size", FALSE),
+#                 ylab = "Time (minutes)",  #ifelse(x == 1000, "Time (seconds)", "Time (minutes)"),
+#                 legend.title = "archR stage",
+#                 legend = "none",#  "right",
+#                 panel.labs = list(nSeqs = paste("n =", c(x))),
+#                 ggtheme = theme_bw(base_size = 12),
+#                 x.text.angle = 45, palette = "Paired"
+#                 )
+# })
+####### NPLB time plots
+##
+relevant_idx <- dplyr::filter(nplb_simdata_results, nClusters != -1)$index
+time_melted_df2 <- reshape2::melt(nplb_simdata_results[relevant_idx,],
+            id.vars = c('nSeqs'),
+            measure.vars = "runTime_m"
+            )
+time_melted_df2$nSeqs <- time_melted_df2$nSeqs/1000
+##
+paired_col <- RColorBrewer::brewer.pal(8, "Paired")[7:8]
+nplb_time_pl <- ggpubr::ggbarplot(data = time_melted_df2, 
+                x = "nSeqs", y = "value", 
+                fill = paired_col[1], width = 0.4, 
+                color = paired_col[1], # sets border color of bars
+                ## add params
+                add = c("mean"), 
+                add.params = list(size= 0.3, color = paired_col[2]),
+                ## label params, if any
+                xlab = paste0("#Sequences ", expression('(x 1K)')),
+                ylab = "Time (minutes)",
+                legend.title = "",
+                legend = "none",
+                ggtheme = ggpubr::theme_pubr(), #theme_bw(base_size = 12),
+                x.text.angle = 0, palette = "Paired"
+                )
+
+
+#######
+
+
+
+## Using patchwork
+archR_simdata_quant_results_plot_woLabels <-
+((archR_ari_pl1 + nplb_ari_pl1 + 
+
+  ((archR_ari_pl2 / nplb_ari_pl2 ) + plot_layout(heights = c(2,1))) + 
+    plot_layout(widths = c(3,1,1))) / 
+  
+  ((archR_time_pl + nplb_time_pl) + plot_layout(widths = c(4,1))) + 
+  
+  plot_layout(heights = c(3,1)) 
+    ) 
+  
+  
+archR_simdata_quant_results_plot  <- archR_simdata_quant_results_plot_woLabels +
+  plot_annotation(tag_levels = 'A')
+
+
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc, 
+                         paste0("archR_manuscript_figure_simdata_quant_results.", devc))
+  ggplot2::ggsave(plot = archR_simdata_quant_results_plot, 
+                  filename = use_fname, 
+                  dpi=300, width=10, height=11, units = "in")
+  
+}
+
+## Combining quant and qual result plots into one, hence this is commented
+# if(knitr::is_html_output()){
+#     archR_simdata_quant_results_plot
+# }
+# if(file.exists(use_fname) && !knitr::is_html_output()){
+#     knitr::include_graphics(use_fname)
+# }
+    
+```
+
+ <!-- out.height="480px", fig.width=8, fig.height=6, dpi=500, warning=FALSE, message=FALSE, -->
+
+```{r simdata-results, fig.align="center", out.height="19cm",   message=FALSE, warning=FALSE, dpi=500, fig.cap="Assessment of performance of \\textit{seqArchR} on simulated data. (\\textbf{A}) Adjusted Rand index (ARI) attained by seqArchR with various parameter combinations on simulated data (data described in Table \\ref{tab:table-simulated-data}). Bar heights represent average over ten runs. Experiments are performed for varous chunk sizes, various mutation rates (m) and number of mutated motif positions (p). (\\textbf{B}) ARI values attained by NPLB. (\\textbf{C}) ARI attained by seqArchR for two scaled up versions of the simulated data: 5000 and 10000 sequences. See main text for more details. (\\textbf{D}, \\textbf{E}) Time taken by seqArchR and NPLB respectively to process simulated data (see main text for details)."}
+
+#### m=0.1, p=1 example
+ 
+sim_res <- readRDS(file.path(archR_simdata_results_path, "seed_1448320993", 
+    "archR_result_simulateddata_mu0.1_p1_n1000_modSelType_stability_chunkSize_500_bound_1e-08", 
+    "archRresult.rds"))
+
+res_clusts <- sim_res$clustSol$clusters
+
+sim_arch_list <- lapply(seq_along(res_clusts), function(x){
+  pl <- archR::plot_ggseqlogo_of_seqs(as.character(sim_res$rawSeqs[res_clusts[[x]]]), 
+    pos_lab = 1:100, bits_yax = "auto", title = NULL)
+  if(x == length(res_clusts)){
+    pl + theme(plot.margin = unit(c(0,0.2,-0.5,0.1), "cm"))
+  }else{
+    pl + theme(plot.margin = unit(c(0,0.2,-1,0.1), "cm"))
+  }
+})
+
+#### m=0.5, p=3 example
+sim_res2 <- readRDS(file.path(archR_simdata_results_path, "seed_1448320993", 
+    "archR_result_simulateddata_mu0.5_p3_n1000_modSelType_stability_chunkSize_500_bound_1e-08", 
+    "archRresult.rds"))
+
+res_clusts2 <- sim_res2$clustSol$clusters
+
+sim_arch_list2 <- lapply(seq_along(res_clusts2), function(x){
+  pl <- archR::plot_ggseqlogo_of_seqs(as.character(sim_res2$rawSeqs[res_clusts2[[x]]]), 
+    pos_lab = 1:100, bits_yax = "auto", title = NULL)
+  if(x == length(res_clusts2)){
+    pl + theme(plot.margin = unit(c(0,0.2,-0.5,0.1), "cm"))
+  }else{
+    pl + theme(plot.margin = unit(c(0,0.2,-1,0.1), "cm"))
+  }
+})
+
+## Using cowplot
+
+get_hline_ycoord <- function(res_clusts){
+    length(unlist(res_clusts)) - cumsum( unlist(lapply(res_clusts, length)) ) 
+}
+
+## for top row
+## change once, reflects for each plot of the top row
+use_mar <- c(4, 3, 1, 0.2)
+use_mgp <- c(1.4, 0.3, 0)
+use_cex.lab <- 0.8
+use_cex.axis <- 0.8
+use_tcl <- NA
+
+r1c1 <- function(){
+  par(
+    mar = use_mar, mgp = use_mgp,
+    cex.lab = use_cex.lab, cex.axis = use_cex.axis, tcl = use_tcl
+  )
+  archR::viz_seqs_acgt_mat_from_seqs(as.character(sim_res$rawSeqs), 
+      pos_lab = 1:100,
+      xt_freq = 25, yt_freq = 200)
+}
+
+r1c2 <- function(){
+  par(
+    mar = use_mar, mgp = use_mgp,
+    cex.lab = use_cex.lab, cex.axis = use_cex.axis, tcl = use_tcl
+  )
+  archR::viz_seqs_acgt_mat_from_seqs(as.character(sim_res$rawSeqs[unlist(res_clusts)]), 
+      pos_lab = 1:100,
+      xt_freq = 25, yt_freq = 100)
+  abline(h = get_hline_ycoord(res_clusts), lwd = 2, col = "white")
+}
+
+r1c3 <- function(){
+  par(
+    mar = use_mar, mgp = use_mgp,
+    cex.lab = use_cex.lab, cex.axis = use_cex.axis, tcl = use_tcl
+  )
+  archR::viz_seqs_acgt_mat_from_seqs(as.character(sim_res2$rawSeqs[unlist(res_clusts2)]), 
+      pos_lab = 1:100,
+      xt_freq = 25, yt_freq = 100)
+  abline(h = get_hline_ycoord(res_clusts2), lwd = 2, col = "white")
+}
+
+top_row <- cowplot::plot_grid(r1c1, r1c2, r1c3, byrow = TRUE, nrow = 1,
+                              labels = c('G', 'H', 'I'), hjust = c(-1, -1, -3),
+                              label_fontface = 'plain', label_size = 15
+                              ) 
+
+r2c1 <- cowplot::plot_grid(plotlist = sim_arch_list, ncol = 1, rel_heights = c(1,1,1,1.4))
+r2c2 <- cowplot::plot_grid(plotlist = sim_arch_list2, ncol = 1, rel_heights = c(1,1,1,1.4))  
+
+bottom_row <- cowplot::plot_grid(r2c1, r2c2, ncol = 2,
+                                 labels = c('J', 'K'), vjust = -0.5,
+                                 label_fontface = 'plain', label_size = 15
+                                 )
+
+archR_simdata_quant_qual_results_plot <- 
+  cowplot::plot_grid(archR_simdata_quant_results_plot, 
+                     top_row, bottom_row, nrow = 3, byrow = TRUE,
+                  rel_heights = c(1, 0.4, 0.2), 
+                  rel_widths = c(1, 0.8, 1)
+                  )
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc,                          
+      paste0("archR_manuscript_figure_simdata_quant_qual_combined_results.", devc))
+  
+  ggplot2::ggsave(plot = archR_simdata_quant_qual_results_plot,
+                  filename = use_fname, 
+                  dpi=300, width=12, height=16, units = "in")
+  
+}
+
+
+if(knitr::is_html_output()){
+    # archR_simdata_quant_qual_results_plot
+    archR_simdata_quant_results_plot
+}
+use_fname <- file.path("figures", devc, 
+                paste0("archR_manuscript_figure_simdata_quant_results.", devc))
+if(file.exists(use_fname) && !knitr::is_html_output()){
+    knitr::include_graphics(use_fname)
+}
+
+```
+
+
+
+
+
+```{r plot-faceted-result-ari, eval=FALSE, include=FALSE, fig.height=6, fig.width=10, dpi=300, fig.cap="Panel A shows the adjusted Rand index (ARI) attained by _seqArchR_ on simulated data variant _v1_, chunk sizes 200, 500, and 1000 bp faceted by the different mutation rates (m) and the number of mutated motif positions (p). Correspnding values for variant _v2_ are shown in panel B. Reported ARI values in the figure are for experiments performed with parameter _bound_ set to $1e-08$."}
+## Old version of figure. Discarded now. **IMPORTANT**
+relevant_idx <- dplyr::filter(archR_simdata_results, bound == 10^-8 &
+                                nSeqs == 1000, seed == 584436111)$index
+
+
+ari_melted_df <- reshape2::melt(archR_simdata_results[relevant_idx,], 
+                  id.vars = c('chunkSize', 'mutpos', 'mutrate'),
+                  measure.vars = c('ARI_Iter1', 'ARI_Iter2', 'ARI'))
+ 
+
+
+
+
+# labels for facet grid
+mutrate_txt <- levels(as.factor(archR_simdata_results$mutrate))
+mutrate.labs <- paste("m =", mutrate_txt)
+names(mutrate.labs) <- mutrate_txt
+# 
+mutpos_txt <- levels(as.factor(archR_simdata_results$mutpos))
+mutpos.labs <- paste("p =", mutpos_txt)
+names(mutpos.labs) <- mutpos_txt
+
+ari_plot <- ggplot(data = ari_melted_df,
+                  mapping = aes(y = value, x = factor(chunkSize), 
+                                fill = variable)) +
+            theme_bw() +
+            geom_col(position = "dodge", width = 0.5, color = "black", size = 0.3) +
+            scale_fill_discrete(name = "Stage",
+                                labels = c('Iteration 1', 'Iteration 2', 'Final')
+                                ) +
+            facet_grid(mutpos ~ mutrate,
+                  labeller = labeller(mutrate = mutrate.labs, 
+                                      mutpos = mutpos.labs)) +
+            xlab("Chunk size (bp)") +
+            ylab("Adjusted Rand Index (ARI)") 
+
+ari_plot
+############
+
+```
+
+
+
+## seqArchR seamlessly identifies fixed promoter sequence architectures in different organisms
+
+In general, when dealing with DNA sequences, different organisms are known to 
+present different challenges for sequence analysis methods.
+For example, the high \texttt{GC} and especially CpG content in human genomic 
+sequence is known to affect approaches using motif over-representation 
+[@roider2009] (**TO-DO**: perhaps, more references needed here?).
+More specifically, with respect to gene promoters, there is diversity of sequence 
+elements within promoters of one organism and also between those of different 
+organisms.
+All promoters of one organism do not possess the same sequence elements, but 
+can harbour combinations of a few different elements.
+Drosophila promoter sequences have multitude of well defined sequence motifs 
+viz. the \texttt{TATA}-box and various Ohler motifs [@ohler2002computational; 
+@ohler2006]; in comparison, promoters of vertebrates, like zebrafish, and 
+mammals, like mice and humans, have relatively fewer well defined motifs. 
+They are also characterised by the stretches of varying sequence compositions, 
+e.g., \texttt{CG/GC} dinucleotide content vs \texttt{A/T}-rich W-box motifs, 
+owing to different architectures (sometimes even intertwined) determining TSS 
+selection at play during different stages of development [@haberle2016promoter;
+@nepal2020dual].
+This diversity of promoter sequence elements lends to diversity in mechanisms 
+of transcription regulation.
+Thus, computational methods that work for one organism may not work 
+off-the-shelf for other organisms.
+In the following, we evaluate seqArchR's ability to identify fixed-element 
+promoter sequence architectures in fruit fly, zebrafish and humans.
+
+
+
+```{r dm-figure-1, out.extra = 'angle=90', out.width='125%', out.height= '125%', fig.align='center', fig.cap="Clusters and architectures identified by seqArchR for \\textbf{\\emph{D. melanogaster}, 2-4h AEL}. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in \\emph{seqArchR} clusters (shortest on top, broadest at the bottom). From left to right: Box and whisker plots of per-cluster IQWs, TPMs, and PhastCons scores followed by per-cluster sequence logos, and stacked barplots showing proportion of TCs unique/shared between transitions. `All' denoting common between all stages. TPM, Tags per million."}
+knitr::include_graphics(file.path(dm_result_dir_path[[1]], 
+                                  paste0("drosophila_figure_paper_", dm_sample_names[1], ".pdf")))
+```
+
+
+```{r dm-figure-2, out.extra = 'angle=90', out.width='125%', out.height= '125%', fig.align='center', fig.cap="Clusters and architectures identified by seqArchR for \\textbf{\\emph{D. melanogaster}, 6-8h AEL}. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in \\emph{seqArchR} clusters (shortest on top, broadest at the bottom). From left to right: Box and whisker plots of per-cluster IQWs, TPMs, and PhastCons scores followed by per-cluster sequence logos, and stacked barplots showing proportion of TCs unique/shared between transitions. `All' denoting common between all stages. TPM, Tags per million."}
+knitr::include_graphics(file.path(dm_result_dir_path[[2]], 
+                                  paste0("drosophila_figure_paper_", dm_sample_names[2], ".pdf")))
+```
+
+
+```{r dm-figure-3, out.extra = 'angle=90', out.width='125%', out.height= '125%', fig.align='center', fig.cap="Clusters and architectures identified by seqArchR for \\textbf{\\emph{D. melanogaster}, 10-12h AEL}. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in \\emph{seqArchR} clusters (shortest on top, broadest at the bottom). From left to right: Box and whisker plots of per-cluster IQWs, TPMs, and PhastCons scores followed by per-cluster sequence logos, and stacked barplots showing proportion of TCs unique/shared between transitions. `All' denoting common between all stages. TPM, Tags per million."}
+knitr::include_graphics(file.path(dm_result_dir_path[[3]], 
+                                  paste0("drosophila_figure_paper_", dm_sample_names[3], ".pdf")))
+``` 
+
+
+
+
+### Fruit fly (*Drosophila melanogaster*) {#dm-results}
+
+
+@schor2017promoter produced high resolution CAGE data and studied the effect of 
+natural genetic variation on transcription strength and distribution of 
+transcription start sites in gene promoters at different developmental stages 
+in Drosophila.
+From the various samples available, we randomly selected one sample `RAL28' 
+(this number identifies the D. melanogaster line from Drosophila melanogaster 
+Genetic Reference Panel (DGRP) that were used by Schor et al.) to help 
+demonstrate seqArchR's efficacy.
+
+Specifically, we used seqArchR to identify promoter architectures at three 
+stages of transition during embryogenesis \textemdash\space 2-4 hours (h), 
+6-8h, and 10-12h after egg laying (AEL).
+Each stage was analysed with seqArchR separately.
+We used 91 bp-long sequences \textemdash\space 45 bp upstream and downstream of 
+the TSS \textemdash\space as core promoter sequences.
+Figures \@ref(fig:dm-figure-1), \@ref(fig:dm-figure-2), and 
+\@ref(fig:dm-figure-3) show the sequence logos of architectures of all 
+clusters identified for the three transitions respectively. 
+For brevity, we use the following shorthand notation to refer to clusters at 
+any transition: CnX or CnY or CnZ. 
+Here, 'C' stands for cluster, n, the cluster number, and letters X, Y and Z 
+denote the three transitions 2-4h, 6-8h, and 10-12h AEL.
+A single cluster, say cluster 3 at 2-4h, is named C3X, and multiple clusters, 
+say clusters 2-6 or clusters 3 and 5 at 10-12h are named C2-6Z or C3,5Z 
+respectively.
+Unless specified otherwise, all clusters are arranged in ascending order of 
+their median interquantile width (IQW).
+
+
+#### Motifs
+
+seqArchR identifies several of the known core promoter elements in Drosophila. 
+These are directional motifs with a precise or variable positioning within 
+promoters \textendash\space abbreviated as DMp and DMv respectively.
+The identified DMp motifs include the `TATA`-box, 
+initiator (Inr, canonical and non-canonical), the downstream promoter element (DPE). 
+Among DMv motifs, seqArchR identifies Ohler motifs 1 and 6, and another motif 
+named DMv5 (@fitzgerald2006comparative; @ohler2002computational).
+seqArchR also identifies some of the non-directional motifs (NDMs) reported 
+by @fitzgerald2006comparative such as the downstream regulatory element (DRE) or 
+Ohler motif 2 (NDM4).
+The non-directional sequence elements are visible in the sequence logos of the 
+raw clusters from seqArchR which were manually combined to obtain the final 
+clusters as seen in the main figures (see Supplementary Figures 6, 7 and 8).
+
+
+`TATA` and DPE sequence elements are known to mutually exclusively pair with 
+the Inr for tissue specific architectures.
+Very early in the embryogenesis, at 2-4h, we do not see any clusters with a 
+`TATA`-box except for the histone gene clusters.
+C6X with Inr+DPE architecture and C1Y with Inr+DPE1 architecture have a very 
+short median IQW denoting highly focused transcription.
+C8Y combines the cognate initiator Inr1 with the DPE.
+At 10-12h, in addition to the DPE architectures (C2Z and C4Z), we see the 
+`TATA`-box architecture in C3Z where the \texttt{TATA}-box combines with a 
+canonical dinucleotide initiator `C`$_{-1}$`A`$_{+1}$.
+In C8Z, there are two initiators, the canonical `CA` and full Inr, their 
+`A`$_{+1}$ 3nt apart.
+We speculate that the canonical `CA` is paired with the `TATA`-box at $-31$ bp 
+from the TSS, and the Inr at $+3$ bp position is paired with a weaker DPE 
+which is also correspondingly shifted by 3 bp.
+C11Z has an Inr with a `TATA`-like sequence at $-30$. 
+Many CTSSs in these tissue specific architectures (with TATA and DPE) are unique 
+to 10-12h (relatively higher percentages of sites unique to a transition point) 
+denoting that these start sites are not active earlier (`ADD SUPP`: See 
+supplementary info/carousel for D.melanogaster).
+
+`TGT` motif at initiator position is found in all timepoints \textemdash\space 
+C18,20X and C18Y and C20Z.
+`TTAGT` is identified as the initiator in C9Z. 
+A variant of this initiator with a weaker `G` is found  in C10X, C12Y.
+C9Z has very different gene ontology (GO) terms enriched in comparison to C10X 
+and C12Y, both of which share atleast a few terms as seen in Figure 
+\@ref(fig:go-terms-comparison-dm). See Supplementary Figure 10 for the top-10 
+enriched GO terms.
+
+```{r go-terms-comparison-dm, fig.align='center', fig.cap="Visualisation of GO terms enriched for various clusters at different developmental stages of Drosophila melanogaster. Top-5 enriched GO terms are shown for each comparison.", out.height="45%"}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[3]], 
+                                  paste0("combined_top5_GO_term_enrichments_Drosophila_clusters.pdf")))
+
+
+```
+
+
+#### Functional specialisation of clusters
+
+As expected, `TATA`-box and DPE are among the top-ranked focused architectures 
+(clusters with lower median IQW) overall.
+Genes responsible for translational machinery, such as the ribosomal protein 
+genes, exhibit the polypyrimidine initiator, `TCT`, architecture.
+These genes are known to have ubiquitously high expression. 
+The corresponding clusters across stages, namely C7X, C11Y and C10Z, 
+have the highest median TPM values while still being relatively sharp.
+
+
+
+##### Detection of recently duplicated gene families
+seqArchR is capable of identifying promoters associated with histone genes 
+which are known to have sequence repeats. 
+These are identified across all timepoints.
+Specifically, C1-5X, C2-4Y and C6-7Y, and C1Z and C5-7Z are enriched for 
+histone genes His1, His2A/2B and His4/4r and His3.
+This explains the very high information content of the sequence logo throughout 
+the core promoter region.
+All CTSSs of His1 gene, namely C2X, C3Y and C6Z, have TSSs in 5' UTRs.
+Clusters C4X, C6Y, and C5Z, all clusters of His2B gene CTSSs, are corrupted 
+with some non-histone ones
+(See section 3.2 in the Supplementary text for more details on this corruption).
+
+
+
+##### Novel Observations
+seqArchR also detects a novel positional motif consisting of a polythymine stretch, 
+reminiscent of  `T`-blocks (with >= 3`T`s) common in C. elegans core promoters 
+(@tblocks2011yanai). 
+We observe such T-blocks at transitions 2-4h and 10-12h AEL. 
+Specifically, C11X and C13Z, both contain `T`-blocks flanking the CTSS of core 
+promoters in this cluster. 
+`T`-stretches have been reported in human genome, too, and were shown to be able 
+to bind TBP (@tatapolyT).
+
+
+C15X, C14Y and C15Z, all have `A`/`T` enrichment at 30 to 45 bp downstream of 
+the CTSS, with a marked increase precisely at 35 bp.
+The GO terms enriched for these clusters are quite similar (Supplementary 
+Figure 14).
+We speculate that this architecture is related to the reported pausing of the 
+RNA PolII between $+20$ bp and $+50$ bp with the centre at $+35$ bp from the TSS 
+(@mavrich2008nucleosome).
+This arrangement places the front end of PolII just 10 bp away from the $+1$ 
+nucleosome border and enables their contact.
+@kwak2013precise also report on promoter-proximal PolII pausing (termed 
+focused-proximal pausing) at 35-40 bp downstream of the TSS.
+Indeed, the gene RpS7, an example proximal-pausing gene from @kwak2013precise 
+is present in these clusters.
+
+
+
+#### Successions of motif use in Drosophila development
+When comparing promoter sequence architectures prevalent at different stages of 
+Drosophila development, some trends immediately emerge.
+Elements orchestrating focused transcription, `TATA`-box and DPE, which are 
+a characteristic of tissue-specific gene promoters, are not observed early on 
+(2-4h). 
+While the DPE is observed 6-8h onwards (C2Y and C4Z), a proper `TATA`-box only 
+appears at 10-12h stage (C3Z).
+
+
+
+
+<!-- #### Chen et al. 2014 {#dm-chen2014} -->
+
+For completeness, we also analysed Drosophila melanogaster promoter sequences 
+from modENCODE [@chen2014comparative] with seqArchR to compare its performance 
+on real promoter sequences with that of the current state-of-the-art approach, 
+NPLB [@mitra2016nplb].
+seqArchR identifies all architectures including variations of the `TATA`-box 
+architectures with their precise positional changes.
+While seqArchR was run for 5 iterations for this data, it identifies a 
+comparable set of clusters/architectures after three 
+iterations and just 38 minutes compared to the 600 minutes taken by NPLB (for 
+its first pass).
+See additional details in Supplementary Information, section 2.
+
+
+
+
+### Zebrafish (*Danio rerio*) {#zf-results}
+
+@nepal2013dynamic produced the first single nucleotide resolution transcriptome
+(CAGE) data for vertebrates, specifically zebrafish, across different stages of 
+embryonic development.
+We used seqArchR to identify different promoter architectures in zebrafish at 
+three different developmental stages, from early to late, namely 64 cells 
+(early maternal), 30% epiboly/dome (late maternal), and the prim 6 stage 
+(late zygotic).
+Promoter sequences at each stage were independently analysed with seqArchR to 
+identify clusters and architectures.
+We use the same naming scheme, as used for D. melanogaster, for referring to 
+clusters identified in zebrafish, except X, Y and Z here denote the three 
+developmental stages of zebrafish analysed in this study.
+
+Figures \@ref(fig:zf-figure-1) and 
+\@ref(fig:zf-figure-2) show the clusters identified for 64 cells stage, 
+30% epiboly and prim 6 stage respectively.
+At 64 cells stage which is only 2 hours post fertilisation (hpf), all 
+architectures contain the canonical pyrimidine-purine initiator with a `W`-box 
+upstream. 
+This is the architecture used for maternal transcription in the oocyte 
+[@haberle2014shifting]. 
+
+
+```{r zf-figure-1, out.extra = 'angle=90', out.height= '105%', out.width='100%', fig.align='center', fig.cap="Clusters and architectures identified by seqArchR for \\textbf{(A) 64 cells} stage and \\textbf{(B) 30\\% epiboly/dome stage}. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in seqArchR clusters (shortest on top, broadest at the bottom). Each panel, from left to right: Box and whisker plots of per-cluster IQWs, and TPMs followed by per-cluster sequence logos, and stacked barplots showing proportion of different genomic annotations. TPM, Tags per million."}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],
+                                  paste0("zebrafish_figure_paper_combined_stage_1and2.pdf")))
+
+
+```
+
+
+```{r zf-figure-2, out.extra = 'angle=90', out.width='105%', out.height= '105%', fig.align='center', eval=TRUE, echo=FALSE, fig.cap="Clusters and architectures identified by seqArchR for \\textbf{prim6 stage} of zebrafish development. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in seqArchR clusters (shortest on top, broadest at the bottom). From left to right: Box and whisker plots of per-cluster IQWs, and TPMs followed by per-cluster sequence logos, and stacked barplots showing proportion of different genomic annotations. For cluster C10Z, an additional zoomed-in view of the section from 45 bp to 150 bp upstream is shown. TPM, Tags per million."}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],
+                                  paste0("zebrafish_figure_paper_", zf_sample_names[3], ".pdf")))
+
+```
+
+
+
+
+#### Motifs
+In comparison to Drosophila, core promoters of other organisms do not possess 
+as much variety of sequence motifs.
+In zebrafish, across developmental stages, genome-wide transcription initiation 
+occurs at `Y`$_{-1}$`R`$_{+1}$ (see Figure \@ref(fig:zf-figure-1), 
+and \@ref(fig:zf-figure-2); @nepal2013dynamic).
+Motif `GGG`$_{+1}$ is seen in some clusters (C3,5Z) where majority of the CTSS 
+are located in non-promoter regions, especially exons.
+Zebrafish core promoter sequences are known to harbour the `W`-box motif, a 
+weaker, `TATA`-like element, in lieu of the `TATA`-box w.r.t. position (~30 bp 
+upstream of TSS) and function (directing transcription initiation from a fixed 
+position). 
+This is especially characteristic of maternal architectures.
+While some clusters at 64 cells and 30\% epiboly/dome stage, namely C1,6X and 
+C5-7Y, have enrichment of `WW` downstream starting at ca. 50 bp, this signal is 
+not periodic.
+In comparison, cluster C11Z, the broadest among all clusters at the prim6 stage, 
+exhibits a 10 bp periodicity in dinucleotide `WW`.
+This periodicity is known to be an intrinsic property of promoters with a 
+well positioned `+1` nucleosome downstream  following the nucleosome free 
+region (NFR) spanning the  promoter [@dreos2016influence].
+This is characteristic of broad promoter architectures where the downstream 
+nucleosome creates a so called `catchment' area for transcription initiation 
+[@haberle2016promoter]. 
+
+
+
+#### Functional specialisation of clusters
+Even though more than 90% of the stable RNA in 30% epiboly/dome stage is still 
+maternally inherited [@haberle2014shifting], seqArchR already detects 
+zygotically activated promoters and their specific architectures. 
+Notably, it detects the promoters of the first wave of zygotic genome 
+activation (ZGA), primarily coming from a dedicated gene cluster on chromosome 
+4 (clusters C3,9-10Y) (Figure \@ref(fig:zf-add-figure)A). 
+Cluster ZZZ (`TO-DO`: Which cluster is this?) belongs to genes encoding mir-430, 
+which are present in hundreds of moderately divergent copies (`TO-DO`: 
+REF ask Ferenc), 
+and whose miRNA product specifically targets maternal RNAs for degradation 
+[@ZFmir-430-1; @ZFmir-430-2]. 
+The ability to detect these architectures in a sample dominated by maternal 
+RNA shows that seqArchR is a powerful tool for characterising regulatory 
+transitions at the promoter level. 
+
+Across all clusters at 64 cells stage, the proportion of promoters that are 
+exclusively used at this stage (stage-specific) is very low (Supplementary 
+Figure 15).
+This behaviour continues into the 30\% epiboly/dome stage with exceptions of 
+clusters with promoters from chromosome 4 (C3,9-10Y).
+Contrastingly, at the prim6 stage, many new 
+stage-specific promoters get introduced (average 25\%).
+
+
+
+##### Gene ontology of main clusters
+
+
+The GO terms enriched for selected clusters are shown in Figure 
+\@ref(fig:zf-add-figure)B. 
+In the figure, the clusters across different developmental stages are grouped 
+based on the attributes of their architectures. 
+The set of clusters on the left (group with red bar along the horizontal axis) 
+is clusters with no downstream enrichment of `W` (`A/T`) signal _vs_ that on the 
+right (blue bar) is those with downstream `W` signal.
+The left group has development-related GO terms distinctively enriched in them.
+Three clusters at stage prim6, C7-9Z, which are part of the left group here, 
+share the fact that they have both the upstream `W`-box and downstream `W` enrichment 
+missing. 
+But these clusters are enriched for different GO terms (Figure \@ref(fig:zf-add-figure)B.
+The GO terms exclusively enriched for cluster C8Y are related to arresting of process of 
+fertilisation (`TO-DO`: better word/phrasing here?) \textemdash\space  
+positive regulation of cellular component organisation 
+and negative regulation of fertilisation (Supplementary Figure 13).
+
+
+```{r zf-add-figure, fig.cap="\\textbf{(A)} Genomic locations of per-cluster promoters in Zebrafish developmental stages 64 cells, 30\\% epiboly/dome and prim6. \\textbf{(B)} Comparison of top-5 enriched GO terms for different clusters per stage of zebrafish development. Clusters grouped by architecture attributes", out.extra = 'angle=0', out.width="100%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],  "combined_top5_GO_mix_clusts_chr4_prop.pdf"))
+
+```
+
+
+#### Motif successions in early zebrafish development
+Comparing promoter architectures in early to later stages, the shift from 
+maternal `W`-box\textendash based architectures is evident.
+In the 30\% epiboly/dome stage, there are clear indications of promoter sequences 
+that do not conform to the maternal architecture seen in the 64 cells stage.
+By prim6 stage, about half of the promoter sequences harbour the 
+architecture where dispersed transcription initiation is orchestrated by the 
+first downstream nucleosome (C10Z).
+
+
+
+### Human (*Homo sapiens*) {#human-results}
+
+
+```{r hg-figure-1, out.extra = 'angle=90', out.width='125%', out.height= '125%', fig.align='center', fig.cap="Clusters and architectures identified by seqArchR for CAGE-derived \\textbf{core promoter sequences from cell lines and tissues} of H. sapiens. Sequence clusters arranged by the median interquantile widths (IQW) of CAGE TCs in seqArchR clusters (shortest on top, broadest at the bottom). From left to right: Box and whisker plots of per-cluster IQWs, TPMs, and tissue specificity scores ($\\tau$) followed by per-cluster sequence logos, and stacked barplots showing proportion of different genomic annotations. TC, tag clusters. TPM, tags per million."}
+
+knitr::include_graphics(file.path(hg_result_dir_path[[1]],
+                                  paste0("human_figure_paper_", hg_sample_names[1], ".pdf")))
+
+```
+
+```{r extra-fig-1, fig.align = 'center', fig.cap="Additional analyses of seqArchR clusters for \\textbf{H. sapiens}. \\textbf{(A)} Per-cluster proportions of ribosomal and other (non-ribosomal) genes (left) and proportions of dual initiation and other promoters (right). \\textbf{(B)} Proportion of housekeeping (HK) genes in each cluster with clusters arranged in ascending order of \\% HK genes (bottom) and absolute numbers (top). \\textit{seqArchR} cluster names correspond to those from the previous figure."}
+
+knitr::include_graphics(file.path(hg_result_dir_path[[1]],
+                                  paste0("extra_figure_human", ".pdf")))
+
+```
+
+Human promoter sequences are known to be challenging for sequence analysis 
+methods owing to their sequence heterogeneity and, in the case of majority of 
+protein-coding genes, high GC and CpG percentages. 
+To test seqArchR on human core promoter sequences, we gathered CAGE data for 
+different human cell lines and tissues from ENCODE. 
+They were pooled by merging CAGE data for all cell lines (see Supplementary 
+Figure 14). 
+Using a threshold of 1 TPM, about 9500 promoter sequences were analysed using 
+seqArchR. 
+
+
+#### Representative promoter windows
+
+First, we tried the same sequence window as in zebrafish ($-45,+150$) 
+because we expected from our analysis in (FANTOM5 paper, supplementary figure 
+x `TO-DO`) that a majority of CpG-island overlapping and broad promoters will 
+have a stable position of $+1$ nucleosome and an underlying nucleosome positioning
+signal, albeit weaker than in zebrafish.
+Keeping the bound value moderately stringent at $10^{-6}$, the analysis
+separated architectures that had a `TATA`-like signal ca. $30$ bp upstream from 
+the `CG`-rich architectures.
+Inability to identify a more crisp `TATA` signal as a separate class is
+possibly because of the dominant influence of the downstream flanking sequence 
+in the chosen window.
+To try to eliminate drowning of this TSS-determining motif architecture, we 
+repeated the analysis using flanks of $-55$ bp and $+5$ bp around the dominant 
+TSS.
+Figure \@ref(fig:hg-figure-1) shows the clusters and corresponding architecture 
+sequence logos. 
+Only `r tata=48+92+88+69;tata` of these, which is 
+`r tata_perc = (tata/7000)*100; round(tata_perc, digits=2)`\% of all the 
+core promoter sequences, are observed to have the \texttt{TATA} motifs 
+(Figure \@ref(fig:hg-figure-1), clusters C1 and C3-C5).
+We reasoned that the reason for this low percentage could be due to the way 
+the set of promoters was obtained: by pooling CAGE signal from many different 
+tissue and cell types where signal from tissue-specific genes is diluted, unlike 
+that of broadly expressed genes, bringing a higher proportion of the later 
+under the 1TPM threshold. 
+We used the $\tau$ values as a measure of tissue specificity of genes 
+[@yanai2005genome]. 
+Of these, clusters C1, C3 and C4 have a higher median tissue specificity 
+score than the rest of the clusters. 
+The proportion of housekeeping genes is also extremely low in these clusters 
+(Figure \@ref(fig:extra-fig-1)B). 
+The top-5 enriched GO terms for each cluster (excluding C2 and C7-8, which have
+$>25\%$ non-promoter CTSSs) are shown in panel C, Figure \@ref(fig:extra-fig-1).
+A clear distinction of enriched terms is observed between tissue-specific/focused 
+architectures and broader architectures.
+Focal adhesion, a cellular component GO term is enriched across all broader 
+architecture clusters (C9-14).
+
+
+The `TCT` architecture seen in C6 contains the largest percentage of ribosomal 
+protein genes (Figure \@ref(fig:extra-fig-1)). 
+They are also seen in the `TATA` architecture clusters, 
+albeit much fewer in proportion. 
+This is not surprising given that earlier studies have reported that the 
+promoters of these genes are known to harbour `TATA` or `TATA`-like sequences 
+[@RPG2011basalmetazoans; @RPGyoshihama2002human; @RPG2006characteristicsHuman].
+@nepal2020dual reported on dual initiation promoters, where `YC` initiation 
+is intertwined with canonical initiation (`YR`) in metazoans, and also being 
+pervasive in human and Drosophila. 
+It was also shown that dual initiation promoters are often broad in shape owing 
+to many TSSs in vicinity of each other.
+Our observations here for human promoter architectures are in line with this 
+(see Figure \@ref(fig:extra-fig-1)) \textemdash\space proportion of dual 
+initiation promoters is higher in clusters with broad promoters, with 
+cluster C2 (non-promoter CTSSs) and C6 (`TCT`/`YC` architecture) as exceptions. 
+
+#### Exclusion of initiator sequence and subsequent analysis
+
+To test the importance of the initiator towards the clustering of the 
+promoter sequences, we compared the clusters obtained with and without the 
+initiator sequence. Refer to Supplementary Figure 12 for the following.
+The results show some interesting observations. 
+In most of the clusters, a large chunk of promoters stay together in both 
+clusterings. 
+Examples of such behaviour are clusters C2-5, C8-9, C11-13, C17,19-20 (left 
+panel; with initiator). 
+These promoters roughly retain their shape-based rankings between the two 
+clusterings.
+In some clusters, such as C14-16 (with initiator) where the flanks show slight 
+`GC` enrichment, a good chunk of these promoters get distributed across some 
+narrow and broad architecture clusters, implying that they clustered together 
+due to the initiator sequence `TG`.
+
+
+
+
+`TO-DO`: Comment on the differences between mammalian genes and those of 
+Drosophila and zebrafish 
+
+
+# Discussion {#discussion}
+
+Promoter sequence architectures are much more than just individual sequence 
+motifs lying anywhere within the promoter region. 
+In some instances, these sequence motifs must occur in tandem, at fixed 
+(relative) distances from one another.
+In addition to motifs, the sequence composition also plays an important role.
+This gives rise to a diverse set of sequence architectures even within a single 
+species.
+Organisms are known to use different core promoter grammars as may be suitable 
+in different scenarios.
+They can be the different stages of embryogenesis of an organism, e.g., early 
+_vs_ late, or for different functions, e.g., tissue specificity _vs_ housekeeping 
+function.
+Moreover, there is diversity even across organisms.
+Therefore, there is a need for de novo approaches to explore and study the 
+diverse promoter sequence architectures across species and organisms.
+
+
+We present seqArchR, an approach for de novo identification of sequence 
+elements based on non negative matrix fatorisation.
+seqArchR can be used for studying promoter sequences aligned by the position 
+of their TSSs.
+seqArchR's chunking-based iterative algorithm can handle scenarios of complex 
+interactions 
+between sequence (motif) elements.
+Experiments on simulated DNA sequences show its ability to identify strong 
+and/or weak artificially planted sequence elements.
+seqArchR is recognised as much faster (ca. $20-30$x) than No Promoter Left 
+Behind, the current state-of-the-art approach for de novo identification of 
+promoter sequence architectures.
+
+
+Different organisms are known to pose different challenges for sequence analysis. 
+For example, Drosophila core promoter sequences are known to harbour multiple 
+motifs with high information content embedded in otherwise low information regions. 
+The core promoter motifs \texttt{TATA}-box, DPE, Ohler motif 5 etc. are some 
+such examples.
+In comparison, other organisms lack such motifs.
+For example, Zebrafish have the W-box upstream of the TSS, and the 
+`WW` periodicity downstream demarcating nucleosome positions [@haberle2014shifting]. 
+Only a small percentage of core promoters in H. sapiens have a 
+\texttt{TATA}-box, while the majority of their promoter sequences have a higher 
+\texttt{GC} content throughout.
+seqArchR is able to detect all types of motifs and non-motifs\textendash 
+based sequence elements.
+We showed this by processing promoter sequences across three different 
+organisms, namely fruit fly, zebrafish, and human.
+Depending on the nature of sequence elements, some parameters, namely the 
+stability bound, number of iterations, and per-iteration collation decision, 
+for seqArchR need to be set appropriately.
+Adjusting the *stability bound* value enables adjusting the sensitivity of seqArchR to 
+identify even weak sequence features that may be enriched in very few sequences.
+As discussed in the \@ref(methods) section, a good choice of number of 
+iterations and the per-iteration collations can help identify overall 
+defragmented clusters still keeping clusters with minor positional variations 
+separate.
+Indeed, the ability to tune seqArchR in this way makes it work seamlessly 
+across organisms.
+
+
+
+seqArchR is developed to discover promoter sequence architectures which are 
+tied to the precise transcription initiation sites identified with CAGE experiments.
+Therefore, it treats absolute position information of sequence features as 
+an important characteristic of any architecture.
+We note that for data from some molecular biology experiments, this 
+requirement to encode and/or discern precise position information of 
+features may not be as important.
+This is due to two reasons.
+First, because the experiment itself may not be high-resolution (single 
+nucleotide), and, second, only relative positions are important for the biology 
+being studied.
+For instance, ChIP-seq is not high-resolution and relative positions of 
+sequence features (transcription factor binding sites) are important.
+We envisage that ChIP-exo or ChIP-nexus data, which gives high-resolution 
+information of TFBSs, can be processed with seqArchR.
+
+\textbf{Is seqArchR another motif finder?}
+seqArchR has some similarities and distinctions w.r.t. any motif finding 
+method.
+Because seqArchR analyses sequences that can contain enriched motifs, it is 
+able to identify motifs, albeit positioned ones, like any other motif finder.
+But, seqArchR uses the complete sequence to directly infer clusters of 
+sequences with common features.
+This is affected by the composition of the whole sequence, including the 
+flanks of the motif, if present.
+This is unlike any motif finding approach, which looks for statistically 
+enriched words of pre-determined size (motif length) (usually 6-15 bp and only 
+seldom larger).
+Another important distinction is that seqArchR does not require/use any 
+background (sequence) information as any motif finder does.
+This limits seqArchR's ability to find motifs enriched in set A _vs_ set B 
+which is a common scenario where motif finders are used (i.e., differential motif 
+enrichment).
+In this case, seqArchR can still be used to independently analyse set A and set
+B and then compare the identified features.
+In a nutshell, seqArchR is a clustering approach, where as typical motif 
+finders can be considered as classification-based.
+
+
+
+seqArchR can be improved in the following ways.
+It currently uses the same set bound value for every chunk/cluster in 
+every iteration. 
+It may be beneficial to extend this to adaptively change the bound value per 
+chunk/cluster in any iteration.
+In terms of its algorithm, the approach for identifying overfit clusters can 
+be improved.
+Furthermore, candidate approaches to automate the 
+decision to collate after every iteration can be explored.
+Also, the current approach for collation can be improved to reduce manual 
+intervention.
+In its current form, seqArchR only reports complete profiles of the same 
+length as the input sequences.
+We want to extend it to be able to extract motifs from complete profiles 
+similar to TF-MoDISco [@tfmodisco].
+
+ 
+
+
+# Conclusions {#conclusions}
+
+seqArchR is a de novo approach for discovering and clustering promoter sequence 
+architectures.
+With seqArchR, we demonstrated the ability of NMF to simultaneously discover 
+clusters of sequences with diverse positioned sequence motifs.
+seqArchR seamlessly identifies promoter architectures across organisms which 
+are characterised by sequence motifs or the underlying sequence compositions.
+It is much faster than the current state-of-the-art, NPLB.
+seqArchR is made available as an R/Bioconductor package [http://www.bioconductor.org/packages/seqArchR](http://www.bioconductor.org/packages/seqArchR) 
+and a website accessible at [https://snikumbh.github.io/seqArchR](https://snikumbh.github.io/seqArchR).
+
+
+
+# Materials
+
+All experimental CAGE datasets analysed in this study were obtained and 
+processed as follows.
+CAGE data for embryonic developmental stages in Drosophila melanogaster were
+obtained from @schor2017promoter.
+Out of different strains/samples available, sample 'RAL_28' was randomly chosen.
+CAGE data for three transitions in embryonic development, namely 2-4h, 6-8h and
+10-12h after egg laying, 
+was processed using CAGEr v2.0.2. See [this](link here) Rmarkdown document for 
+more details.
+
+CAGE data for the embryonic developmental stages in Zebrafish were obtained 
+from @nepal2013dynamic. 
+Out of all stages ranging over maternal to zygotic transition, we selected 
+three, namely 64 cells, 30% Epiboly or Dome, and prim 6 for this study.
+These were processed using CAGEr v1.20. See [this](link here) Rmarkdown 
+document for more details.
+
+For Homo sapiens, all cell lines-specific CAGE data was obtained from ENCODE 
+consortium which was made available previously as an R package 
+`ENCODEprojectCAGE_1.0.1.tar.gz` available at [http://promshift.genereg.net/CAGEr/PackageSource/](http://promshift.genereg.net/CAGEr/PackageSource/).
+For this study, data from all cell lines was merged and processed as described 
+in [this](link here) 
+Rmarkdown document.
+Library sizes of all cell lines that are included are shown in Supplementary 
+Figure 4.
+
+The list of housekeeping genes in humans was obtained from @eisenberg2013human.
+The $\tau$ index, first introduced by @yanai2005genome, for all human genes 
+were obtained from @tau2021ageing.
+@tau2021ageing used the GTEx data to compute the $\tau$ index of 
+tissue-specificity for all human genes.
+A value closer to zero indicates equally expressed across included tissues in 
+the GTEx data and a value closer to $1$ indicates expressed in one tissue.
+The list of dual initiation promoters in humans was obtained from @nepal2020dual.
+
+
+# Methods {#methods}
+
+NMF seeks a low-rank decomposition of any given matrix $V_{p\times n}$ which 
+only has non-negative entries.
+Here, $n$ is the number of samples and $p$ the number of attributes.
+We note that attributes can also be referred to as features and $V$ as data 
+matrix.
+
+
+```{=tex}
+\begin{equation}
+  V_{p \times n} \approx W_{p \times k} H_{k \times n}\qquad k \ll p;\quad V, W, H >= 0
+  (\#eq:nmf)
+\end{equation}
+```
+The matrix $H_{k\times n}$ records the coefficients of the $n$ samples in the $k$-dimensional representation, $k \ll p$.
+The matrix $W_{p\times k}$ provides the loadings of the original attributes, $p$, in the $k$-dimensional space.
+$W_{p\times k}$ is called the basis matrix (and we refer to each column of $W$ as a basis vector), and $H$ the coefficients matrix.
+All entries in $W$ and $H$ are non-negative.
+Thus, NMF achieves dimensionality reduction, and can be further used for clustering using information in the coefficients matrix.
+Here, it is assumed that the lower-dimensional representation obtained using NMF corresponds to different clusters present in the data, and the clusters are characterised by different groups of attributes.
+Due to non-negativity, NMF lends an intuitive parts-based representation in many applications where negative values do not have an intuitive meaning.
+
+The basic idea of seqArchR is to process a given set of sequences with NMF.
+These sequences are represented in the form of a one-hot encoded matrix, whose each column corresponds to a sequence and the sequence features are along its rows.
+In the following, we describe in detail the input to seqArchR and its chunking-based iterative algorithm. Together with it, information on the relavent parameters from the corresponding R package seqArchR is also given.
+
+## Input
+The input to seqArchR is a matrix of one-hot encoded representation of DNA sequences of same length, $L$.
+For each DNA sequence, its mononucleotide profile is one-hot encoded as follows.
+The four channels in its one-hot encoding \textemdash\space due to DNA alphabet, $\Sigma = \{\texttt{A,C,G,T}\}$ \textemdash\space are concatenated to produce a single column vector representation per sequence.
+The size of this vector is four times the length of the sequence itself.
+Thus, for an input matrix representing mononucleotide profiles of $n$ sequences, its dimensions are $(4L \times n)$.
+All entries in this matrix are non-negative, or more specifically, $0$ or $1$.
+
+Similarly, the dinucleotide profile of a sequence can be one-hot encoded.
+The input matrix dimensions in this case are $(4^2L \times n)$.
+It is known that dinucleotide profiles of DNA sequences hold more information than mononucleotide profiles (`TO-DO/BL`: citation).
+All results reported in this article are obtained using dinucleotide profiles.
+
+As shown in Figure \@ref(fig:archR-algo-figure)B, in the decomposition of the one-hot encoded input matrix $V_{p\times n}$ to $W_{p\times k}$ and $H_{k\times n}$, $W_{p\times k}$ assigns scores to each (di)nucleotide at a given position.
+Each column of $W_{p\times k}$, a single basis vector, captures combinations of various nucleotides at characteristic positions in sequences and can be said to represent an architecture.
+As an example, consider architectures I-IV in Figure \@ref(fig:archR-algo-figure)B.
+All important features ((di)nucleotide-position pairs) are captured at once in a single basis vector of $W$.
+$H_{k\times n}$ gives the coefficients for each sequence on all $k$ basis vectors.
+These coefficients are relative in nature.
+When a particular sequence has features characterised by basis vector A but not those by basis vector B, it gets assigned a higher coefficient for basis vector A than for B.
+This information can be used for soft clustering of sequences.
+In this fashion, coefficients for all $n$ sequences can be interpreted.
+Thus, NMF can simultaneously learn the complex interdependencies and interactions between sequence features *de novo*, and also provide soft clustering of input sequences.
+
+
+Given a set of DNA sequences as a FASTA file or a \texttt{Biostrings::DNAStringSet} object [@pages2017biostrings], the R package seqArchR has provision to generate one-hot encoding of mono- as well as dinucleotide profiles of sequences.
+This can then be used as an input.
+
+## Algorithm {#archR-algorithm}
+
+seqArchR's algorithm for *de novo* identification of clusters and architectures among the given sequences is depicted pictorially in Figure \@ref(fig:archR-algo-figure)A.
+Here, we describe the algorithm in full.
+
+
+1.  **Chunk the given sequences.** 
+Given the input matrix, the total collection of sequences is divided into smaller chunks (subsets).
+These *chunks* are of a pre-defined size that can be set by the user (parameter: `chunk_size`).
+
+    Note on terminology: With every chunking operation on a set of sequences, the resulting chunks of sequences are referred to as *inner* chunks, and the parent set of sequences are referred to as the *outer* chunk.
+    At the first iteration, we have one outer chunk (the complete set of input sequences), and many inner chunks.
+    At subsequent iterations, we expect more than one outer chunks, and one or more inner chunks per outer chunk.
+
+2.  **Independently process each inner chunk with NMF as follows.**
+
+    (a) **Finding the appropriate number of clusters/basis vectors (*model selection*):** The number of basis vectors is given by $k$ in Eq. \@ref(eq:nmf).
+        We test a range of values for $k$ (parameters: `k_min` and `k_max`) from which the optimum value is selected based on either of the two quantitative criteria mentioned below (parameter: `mod_sel_type`).
+
+        -   *Model selection using stability of obtained basis vectors*.
+            @amariDistPNAS proposed and used the Amari-type distance that for a given value of $k$, measures the instability of the identified basis vectors over multiple runs.
+            They termed the set of basis vectors $R$ learned in a single run as a dictionary.
+            With $R_{m}$ dictionaries from $m$ runs, the dissimilarity between any two dictionary pairs $R, R'$ is given as
+
+            ```{=tex}
+            \begin{equation} 
+            diss(R,R') = \frac{1}{2K}\bigg(2K - \sum_{j=1}^{K}\max\limits_{1\leq k\leq K} C_{kj} - \sum_{k=1}^{K}\max\limits_{1\leq j\leq K} C_{kj}\bigg).
+            (\#eq:amaridist) 
+            \end{equation}
+            ```
+            The instability of the set of identified $k$ basis vectors is the average dissimilarity of all dictionary pairs over $m$ multiple runs as computed by Eq. \@ref(eq:amaridist).
+            @amariDistPNAS used this for studying spatial gene expression patterns.
+
+            With increasing values of $k$, the instability increases. 
+            seqArchR sets a bound on the instability.
+            The maximal value of $k$ whose instability is lower than the bound is selected.
+            In the R package, the `bound` parameter can be set by the user.
+            Based on experiments on simulated data and various biological datasets, the recommended value of `bound` is one of $10^{\{-6,-7,-8\}}$.
+            Higher powers are more stringent and lower ones more lenient.
+            The user can choose values beyond this range as may be suitable for a dataset.
+            The default value of *bound* is set to $10^{-6}$ (lenient). 
+            The default/recommended number of bootstrapped iterations when using this approach for model selection is 100 (parameter: `n_runs`).
+
+        -   *Model selection using bi-cross-validation.* 
+            $r$-fold bi-cross-validation (bi-CV) approach was proposed by @owen2009bi and recently used by @plos-patterns-nmf.
+            This approach tests the re-construction accuracy of the NMF solution for each value of $k$ and chooses the one that maximises it.
+            Multiple bootstrapped iterations of NMF are performed for each value of $k$.
+            The one with the maximum average re-construction accuracy over all bootstrapped iterations is chosen as the best one.
+            
+            The default/recommended number of folds and bootstrapped iterations when using this approach is 5 and 500 respectively (parameter: `cv_folds` and `n_runs`).
+            Note that the multiple runs are performed per-fold. 
+            The effective number of iterations thus performed is `r 5*500` per value of $k$.
+        
+        The stability-based model selection procedure is the recommended approach
+        <!-- for aligned sequences [Note: keep this bit if the paper discusses both aliigned and non-aligned seqs, aligned as in aligned by the TSS position] -->
+        since it is faster owing to the smaller number of bootstrapped runs required per value of $k$.
+        
+        <!-- (TODO: If we show results on chip-seq data, we can refer to it here.)  -->
+        
+
+    (b) **Obtaining clusters:** 
+        We then obtain the final NMF solution from multiple runs using the chosen number of basis vectors.
+        <!-- We use scikit-learn module in Python for solving NMF.  -->
+        We use the coordinate descent solver [@cdsolver2009] with Nonnegative Double Singular Value Decomposition (NNDSVD) initialisation [@nndsvd2008] which encourages sparsity.
+        <!-- We also employed $\ell 1$-regularisation. (With the regularisation parameter set to 'None', setting L1 regularisation doesn't work. But in the current version we are not using this.) -->
+        Matrices $W$ and $H$ from the run achieving the best re-construction accuracy are collected.
+        The set of sequences in the *inner chunk* is then partitioned into as many clusters as the number of basis vectors using the coefficients in matrix $H$ (Eq. \@ref(eq:nmf)).
+        Each sequence is added to the cluster corresponding to the basis vector for which it has the highest coefficient.
+    
+    (c) **Accounting for overfitting.**
+        Either of the model selection approaches can suffer from overfitting.
+        This leads to identification of clusters where too many features of only few sequences from the cluster are deemed as important. 
+        The coefficients assigned to these few sequences for this architecture are very high in comparison to other sequences in the cluster.
+        Thus, the distribution of the coefficients for all sequences in such a cluster shows a large variation.
+        seqArchR detects such cases by default and controls for them by re-merging them with the parent cluster.
+        For example, if a (parent) cluster is divided into three clusters of which the second is adjudged as an overfit cluster, it is merged back into the first 
+        (considered as the parent) of the three clusters.
+        <!-- (`TO-DO`: We may have to explain why re-merged with the first cluster.) -->
+        <!-- (`TO-DO`: Here it will be important to show that an overfit cluster can occur in between, and that it does not necessarily occur always at the end, i.e., third of three clusters or fifth of five clusters.) -->
+        <!-- (`TO-DO`: Showing an example will really help to clearly put forth both the above points.) -->
+        
+         <!-- Because one bound value is used for each chunk, it may be stringent in case of one chunk but lenient in case of another. -->
+         <!-- A basis vector which explains too many features of too few sequences is identified.  --> 
+        <!-- As a result, in addition to the selected few sequences that get assigned relatively very high coefficients, some other sequences get assigned coefficients  -->
+        <!-- and consequently artificially/erroneously assigning higher coefficients to sequences which -->
+        
+
+
+3.  **Collate similar clusters (if any) from different inner chunks.** Among the clusters obtained from the various *inner* chunks, we collate those that are similar into one.
+    This is done by clustering similar basis vectors using hierarchical clustering.
+    The distance and agglomeration method used for hierarchical clustering can be set by the user (parameters: `result_dist` and `result_aggl`).
+    One set of choices here are applicable for all iterations.
+    
+    Based on various computational experiments, we recommend using ward.D linkage with Euclidean or correlation distance.
+    <!-- Euclidean distance and ward.D linkage have been found to work best when architectures have motifs as in Drosophila promoter sequences (`TODO`: ref appropriate results subsection). -->
+    <!-- When the architectures are characterized by stretches of sequence profiles, e.g., `GC`-richness, correlation and complete linkage work better.  -->
+    <!-- The second combination is used by default in the package. -->
+    Note that using any combination of distance and agglomeration method only affects collation of clusters and does not affect per-chunk cluster/architecture identification by NMF.
+     
+
+4.  **Re-iterations:** Designate all obtained clusters as separate *outer chunks*.
+    Each *outer chunk* is treated as an independent collection of sequences.
+    Steps 1-3 are repeated per outer chunk separately with the following caveat.
+    As a result of the collation, if any new outer chunk is much larger than 
+    the user-specified `chunk_size`, it is further divided into 'inner' chunks 
+    of user-specified `chunk_size` as per step 1 and processed with steps 2 and 3.
+    
+    The designation of obtained clusters as outer chunks and processing them over 
+    the next iteration is handled  automatically. 
+    seqArchR performs a user-specified number of iterations in this fashion (parameter: `total_itr`).
+    
+The clusters identified in the last iteration of seqArchR are collated and 
+reported as the final result.
+This collation of clusters for final reporting is treated as separate from 
+the per-iteration collation.
+
+### Important note on collation of clusters and number of re-iterations
+Keeping in mind the exploratory nature of any clustering analysis, the 
+decision to collate similar clusters from different chunks (step 3) and 
+number of iterations (step 4) have no defaults because they are dependent on 
+the nature of the data.
+
+**Suppressing or deferring collation.** 
+In addition to the choice of the distance measure and the agglomeration method 
+to be used for collating clusters using hierarchical clustering, the 
+per-iteration decision to collate clusters is also left to the user 
+(parameter: `'set_ocollation'`).
+One can suppress collation for a particular iteration or all of the 
+specified number of iterations.
+For instance, if three iterations are to be performed, the user can choose to 
+collate clusters only for the second iteration.
+We observed that deferring collation is a useful strategy (data not shown), 
+especially in scenarios where the sequence features/motifs have minor 
+positional variations.
+For example, in Drosophila promoter sequences, where `TATA`-box is 
+observed anywhere between 32 to 28 bp upstream of the TSS, deferring collation 
+to the second iteration is helpful to detect these minor positional differences 
+right away.
+In fact, in all experiments reported here, except those with simulated data, 
+we defer collation to the second iteration.
+
+
+**Number of iterations.**
+The appropriate number of iterations depends on the nature and number of 
+sequence architectures.
+It is almost always a good idea to perform at least three iterations or at 
+least one iteration 
+after a deferred collation exercise when analyzing real promoter sequences.
+
+
+**Curation of collated clusters.**
+Another point to note is that depending on the choices for distance measure and 
+agglomeration method, programmatic collation of basis vectors with hierarchical 
+clustering can sometimes combine clusters which are perhaps better off separate. 
+Indeed many studies require some manual curation when combining position weight 
+matrices (PWMs) with hierarchical clustering [@rsatpaper] 
+(`TODO`: any other paper to cite?).
+Therefore, we recommend that the clusters from the last iteration be left 
+uncollated (by appropriately setting the parameter `'set_ocollation'` to `FALSE` 
+for the last iteration).
+The final output from seqArchR will still be a collation of clusters from the 
+last iteration which, as noted above, is treated as independent of per-iteration
+collation.
+Keeping clusters from the last iteration uncollated provides the user with a 
+choice to collate the clusters in a custom manner and curate them when necessary. 
+The users can either use built-in functions from seqArchR package or any other 
+custom script.
+All results reported here follow this strategy (except simulated data results).
+Supplementary Figures 6-8, 12-14 and 17 show how this process was carried out 
+for raw seqArchR results for D.melanogaster, D.rerio, and H.sapiens respectively.
+
+
+
+
+
+
+Thus, seqArchR requires no prior information or specification about the nature 
+of architectures.
+It can distinguish sequences with motif-based architectures from non-motif-based 
+architectures.
+If there are motifs, it does not require any information on the expected number 
+of motifs or motif lengths or if any of the motifs have gaps (and the size of 
+the gaps), or if some of them work cooperatively resulting in a combinatorial 
+interplay.
+
+
+### Rationale for the chunking-based algorithm {#chunking-rationale}
+
+
+```{r seqArchR-mem-figure, fig.width=5, fig.height=3, fig.align="center", out.height="200px", warning=FALSE, dpi=500, fig.cap="Memory footprint of seqArchR. The maximum resident set sise for different settings of seqArchR is reported."}
+## archR memory usage plots
+
+relevant_idx <- dplyr::filter(archR_simdata_results_mem, MaxRSS != -1)$index
+mem_melted_df2 <- reshape2::melt(archR_simdata_results_mem[relevant_idx,],
+            id.vars = c('chunkSize', 'nSeqs'),
+            measure.vars = "MaxRSS"
+            )
+
+mem_melted_df2$nSeqsInK <- mem_melted_df2$nSeqs/1000
+mem_melted_df2$nSeqsInK <- as.factor(mem_melted_df2$nSeqsInK)
+mem_melted_df2$nSeqs <- as.factor(mem_melted_df2$nSeqs)
+mem_melted_df2$chunkSizeInK <- mem_melted_df2$chunkSize/1000
+
+
+archR_mem_pl2 <- ggpubr::ggline(data = mem_melted_df2, 
+                x = "chunkSizeInK", y = "value",
+                palette = RColorBrewer::brewer.pal(6, "Dark2")[6:4],
+                color = "nSeqs", 
+                add = c("mean_sd"),
+                # error.plot = "pointrange",
+                xlab = paste0("Chunk size ", expression('(x 1K)')),
+                ylab = "Memory used (MB)",
+                legend.title = "# Sequences",
+                ylim = c(500, 1300),
+                ggtheme = theme_bw(), 
+                font.legend = 14,
+                font.x = 14,
+                font.y = 14,
+                font.tickslab = 14, 
+                size = 1,
+                legend = "top"
+                )
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc,                          paste0("archR_manuscript_figure_simdata_memory_footprint.", devc))
+  
+  ggplot2::ggsave(plot = archR_mem_pl2, device = devc,
+                  filename = use_fname, 
+                  dpi=500, width=6, height=5, units = "in")
+  
+}
+
+
+# if(knitr::is_html_output()){
+#     archR_mem_pl2
+# }
+# 
+# 
+# if(file.exists(use_fname) && !knitr::is_html_output()){
+#     knitr::include_graphics(use_fname)
+# }
+
+#######
+
+```
+
+
+As discussed in the [Results](#results) section, promoter sequence architectures 
+often harbour only slightly varying sequence elements at the same position in 
+all sequences.
+For example, the canonical YR initiator \textemdash\space case of same length motifs 
+overlapping in occurrence positions, and Inr `CA` overlapping with the first 
+`CA` of Ohler1 motif in Drosophila. 
+A chunking-based approach makes it relatively easier to select the best model 
+by alleviating the above mentioned co-occurrence cases and handling fewer 
+sequences at once.
+Supplementary Figure 4A shows the architectures of clusters, identified among 
+Drosophila promoter sequences from modENCODE, using NMF with stability-based 
+bound criterion for model selection in the first iteration.
+It can be seen that, the first set of identified clusters (across chunks) are majorly governed by initiator elements.
+
+
+Additionally, for larger chunk-sizes, the memory usage increases linearly (see Supplementary Figure 2).
+Therefore, having the ability to process very large datasets one chunk at a time enables processing them with a reasonably smaller memory footprint. 
+Qualitatively, a very small chunk size can lead to a fragmented set of final clusters.
+
+
+## Method Availability
+seqArchR is made available as an R package with a GNU General Public License version 3 (GPL-3).
+The website documenting the package is accessible at <https://snikumbh.github.io/seqArchR> and the source code at <https://github.com/snikumbh/seqArchR>.
+seqArchR was previously named archR (version 0.1.8).
+This is also the version used for experiments and results reported in this manuscript.
+It is deposited at Zenodo with DOI [10.5281/zenodo.5055408](https://doi.org/10.5281/zenodo.5055408) [@sarvesh_nikumbh_2021_5055408].
+Following version 0.1.8, there have been no changes to the algorithm.
+
+
+# Acknowledgements
+
+We acknowledge Leonie Roos for processing earlier versions of Drosophila and Zebrafish CAGE datasets.
+We thank members of the Computational Regulatory Genomics group for discussions through out the project.
+
+# References
+
+

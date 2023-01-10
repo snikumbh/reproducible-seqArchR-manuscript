@@ -1,0 +1,508 @@
+---
+title: "Supplementary for 'Identifying promoter sequence architectures via a chunking-based algorithm using non-negative matrix factorisation'"
+author: 
+ - "Sarvesh Nikumbh^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, s.nikumbh@imperial.ac.uk]"
+ - "Boris Lenhard^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, b.lenhard@imperial.ac.uk AND Sars International Centre for Marine Molecular Biology, University of Bergen, N-5008, Bergen, Norway]"
+date: "Timestamp: `r format(Sys.time())`"
+geometry: "left=2cm,right=2cm,top=1.5cm,bottom=2cm"
+bibliography: seqArchR-bibliography.bib
+# csl: genome-biology.csl
+link-citations: yes
+linkcolor: blue
+output:
+  bookdown::pdf_document2:
+    includes:
+      in_header: mystyles.sty
+    code_folding: hide
+    toc: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+    keep_tex: true
+  bookdown::html_document2:
+    code_folding: hide
+    lof: true
+    toc: true
+    toc_float: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+editor_options: 
+  markdown: 
+    wrap: sentence
+  chunk_output_type: console
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+
+\pagenumbering{gobble}
+<!-- \usepackage[figurename=Supplementary Fig.]{caption} -->
+\renewcommand{\figurename}{Supplementary Fig.}
+
+\newpage
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dev = 'svg', include=TRUE, eval=TRUE)
+
+```
+
+```{r setup-paths, include=FALSE}
+
+library(reshape2)
+library(patchwork)
+library(readr)
+if(requireNamespace("magick", quietly = TRUE)){
+  library(magick)
+}
+
+library(ggplot2)
+library(ggpubr)
+
+## Note: always keep pdf to the end
+use_device <- c("png", "tiff", "svg", "pdf")
+use_tags <- 'A' # change this when different tag levels are required across all plots
+use_nest <- '1' # for nested tags
+fig_use_cores <- 16
+
+figures_path <- file.path("figures")
+data_path <- file.path("experiments", "data")
+results_path <- file.path("experiments", "results")
+
+archR_simdata_data_path <- file.path(data_path, "simulated-data")
+archR_simdata_results_path <- file.path(results_path, "simulated-data-original-final-for-paper")
+
+archR_simdata_results_path <- file.path(results_path,
+                                "simulated-data-archR-v0.1.8-bound-1e08", 
+                                paste0(fig_use_cores, "cores"))
+
+nplb_simdata_results_path <- file.path(results_path, "comparison-approaches",
+                                paste0(fig_use_cores, "cores"), "simulated-data")
+
+### Drosophila melanogaster
+### 
+dm_sample_names <- paste0("RAL28_", c("2_to_4", "6_to_8", "10_to_12_sample12"))
+archR_dm_results_path <- file.path(results_path,
+                                "drosophila-schor2017", "with_archR_v0.1.8")
+
+archR_dm_chen_results_path <- file.path(results_path,
+                                "drosophila-chen2014", "with_archR_v0.1.8")
+
+dm_result_serial_run_path <- file.path(archR_dm_chen_results_path, "archR_result_drosophila-chen2014_serial_run_modSelType_stability_chunkSize_2000_bound_1e-08_collate_FTFFF")
+
+
+## store result_directory path
+dm_result_dir_path <- vector("list", length(dm_sample_names)) 
+names(dm_result_dir_path) <- dm_sample_names
+
+for(sn in dm_sample_names){
+    dm_result_dir_path[[sn]] <- file.path(archR_dm_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+### Danio rerio
+### 
+zf_sample_names <- c("64_cells", "dome_30perc_epiboly", "prim6")
+archR_zf_results_path <- file.path(results_path,
+                                "zebrafish-nepal2013", "with_archR_v0.1.8")
+
+## store result_directory path
+zf_result_dir_path <- vector("list", length(zf_sample_names)) 
+names(zf_result_dir_path) <- zf_sample_names
+
+for(sn in zf_sample_names){
+    zf_result_dir_path[[sn]] <- file.path(archR_zf_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+### Homo sapiens
+### 
+hg_sample_names <- c("human_cellGroup_merged")
+archR_hg_results_path <- file.path(results_path,
+                                "human", "newly_processed", "minTPM_1")
+
+## store result_directory path
+hg_result_dir_path <- vector("list", length(hg_sample_names)) 
+names(hg_result_dir_path) <- hg_sample_names
+
+for(sn in hg_sample_names){
+    hg_result_dir_path[[sn]] <- file.path(archR_hg_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+```
+
+
+# Supplementary figures from experiments on simulated data
+
+```{r sim-data-qual-supp-figure, fig.cap="Qualitative assessment of result on simulated data. (\\textbf{A}) Sequences visualised as an image for randomised input, (\\textbf{B, C}) clustered output and sequence logos from seqArchR for $m=0.1$ and $p=1$, and (\\textbf{D, E}) for $m=0.5$ and $p=3$.", fig.height=4}
+
+knitr::include_graphics(file.path(figures_path, tail(use_device,1),
+        "archR_manuscript_figure_simdata_qual_results.pdf"))
+
+```
+
+```{r sim-data-mem-usage-supp-figure, fig.cap="Memory footprint of seqArchR. The maximum resident set sise for different settings of seqArchR is reported.", out.height="45%", out.width="55%", fig.align='center'}
+
+knitr::include_graphics(file.path(figures_path, tail(use_device,1),
+        "archR_manuscript_figure_simdata_memory_footprint.pdf"))
+
+```
+
+\newpage
+# Results on Drosophila core promoters from modENCODE 
+
+We processed CAGE-derived core promoter sequences for Drosophila melanogaster available from modENCODE [@chen2014comparative] with seqArchR to facilitate comparison with NPLB [@mitra2016nplb] on real promoter sequences.
+Specifically, 6635 core promoter sequences of D.melanogaster carcass [@chen2014comparative] were processed with seqArchR using no parallelisation. 
+We let seqArchR perform five iterations with collation performed at only the second iteration. 
+While NPLB takes about 600 minutes to report 12 promoter architectures in the first pass, a comparable result from seqArchR is obtained at the end of second iteration reporting seven architectures and taking 27 minutes. 
+NPLB further processes all the architectures identified in the first pass [^1] to  obtain a total of 30 architectures.
+[^1]: Each cluster of sequences is manually processed.
+
+
+```{r serial-run-chen2014, include=TRUE, echo=FALSE, fig.align="center", fig.scap="Time comparison with NPLB for processing D. melanogaster core promoter sequences", fig.cap="Time taken by seqArchR to process CAGE-derived core promoter sequences from D.melanogaster (modENCODE) with no parallelisation. Each shade of green represents time taken by an individual iteration \\textendash\\space left to right/dark to light green) iteration 1 to 5."}
+
+
+
+chen2014_result_serial <- readRDS(file.path(dm_result_serial_run_path, "archRresult.rds"))
+
+
+df <- data.frame(method = "seqArchR",
+                    Iteration = factor(seq(5), levels = 5:1),
+                    Time = unlist(chen2014_result_serial$timeInfo))
+
+
+archR_chen_time_pl <- ggpubr::ggbarplot(df, y="Time", x="method", ggtheme = theme_bw(),
+                        fill = "Iteration",
+                        color = "Iteration",
+                        palette = RColorBrewer::brewer.pal(9, "Greens")[3:8],
+                        orientation = c("horizontal"),
+                        ylab = "Time Elapsed (Minutes)",
+                        xlab = "", yticks.by = 10, 
+                        legend = "none"
+    )
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc,  paste0("archR_supp_figure_modEncode_time.", devc))
+  
+  ggplot2::ggsave(plot = archR_chen_time_pl, device = devc,
+                  filename = use_fname, 
+                  dpi=300, width=5, height=1, units = "in")
+  
+}
+
+knitr::include_graphics(file.path(figures_path, tail(use_device,1),
+        "archR_supp_figure_modEncode_time.pdf"))
+
+
+```
+
+
+Supplementary Figure \@ref(fig:serial-run-chen2014-2) shows the architectures/clusters identified by seqArchR at the end of iteration 2. 
+These clusters are processed further for three additional iterations.
+Supplementary Figure \@ref(fig:serial-run-chen2014-3) shows the cluster architectures at the end of iteration 4.
+
+
+```{r serial-run-chen2014-2, include=TRUE, echo=FALSE, fig.align="center", fig.scap="Sequence logos of promoter architectures identified by seqArchR in D. melanogaster (modENCODE).", fig.cap="Sequence logos of promoter architectures identified by seqArchR in D. melanogaster (modENCODE) \\textbf{(A)} Iteration 1; \\textbf{(B)} Iteration 2.", message=FALSE, warning=FALSE}
+
+
+
+chen2014_result_serial <- readRDS(file.path(dm_result_serial_run_path, "archRresult.rds"))
+
+chen2014_seqlogos_1 <- seqArchRplus::per_cluster_seqlogos(sname = "NULL", 
+    seqs = chen2014_result_serial$rawSeqs, 
+    clusts = seqArchR::get_seqs_clust_list(chen2014_result_serial$seqsClustLabels[[1]]), 
+    bits_yax = "max", pos_lab = seq(-45,45), one_plot = TRUE, txt_size = 8)
+
+
+chen2014_seqlogos_2 <- seqArchRplus::per_cluster_seqlogos(sname = "NULL", 
+    seqs = chen2014_result_serial$rawSeqs, 
+    clusts = seqArchR::get_seqs_clust_list(chen2014_result_serial$seqsClustLabels[[2]]), 
+    bits_yax = "max", pos_lab = seq(-45,45), one_plot = TRUE, txt_size = 8)
+
+comb_pl <- cowplot::plot_grid(chen2014_seqlogos_1, chen2014_seqlogos_2, 
+                    ncol = 2, labels = "AUTO")
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc,  paste0("archR_supp_figure_modEncode_seqlogos_iter2.", devc))
+  
+  ggplot2::ggsave(plot = comb_pl, device = devc,
+                  filename = use_fname, 
+                  dpi=300, width=14, height=8, units = "in")
+  
+}
+
+knitr::include_graphics(file.path(figures_path, tail(use_device,1),
+        "archR_supp_figure_modEncode_seqlogos_iter2.pdf"))
+
+
+```
+
+
+```{r serial-run-chen2014-3, include=TRUE, echo=FALSE, fig.align="center", fig.scap="Sequence logos of promoter architectures identified by seqArchR in D. melanogaster (modENCODE) (Iteration 4)", fig.cap="Sequence logos of promoter architectures identified by seqArchR in D. melanogaster (modENCODE) (Iteration 4)", message=FALSE, warning=FALSE}
+
+
+
+chen2014_result_serial <- readRDS(file.path(dm_result_serial_run_path, "archRresult.rds"))
+
+chen2014_seqlogos <- seqArchRplus::per_cluster_seqlogos(sname = "NULL", 
+    seqs = chen2014_result_serial$rawSeqs, 
+    clusts = seqArchR::get_seqs_clust_list(chen2014_result_serial$seqsClustLabels[[4]]), 
+    bits_yax = "max", pos_lab = seq(-45,45), one_plot = FALSE, txt_size = 12)
+
+
+chen2014_seqlogos <- lapply(seq_along(chen2014_seqlogos), function(x){
+    foo <- chen2014_seqlogos[[x]] + ggplot2::theme(title = element_blank(),
+        plot.margin = ggplot2::unit(c(0.2, 0.3, 0.1, 0.1), "cm"))
+})
+
+chen2014_seqlogos <- cowplot::plot_grid(plotlist = chen2014_seqlogos, ncol = 2, byrow = FALSE)
+
+for(devc in use_device){
+  use_fname <- file.path("figures", devc,  paste0("archR_supp_figure_modEncode_seqlogos_iter4.", devc))
+  
+  cowplot::save_plot(use_fname, 
+    plot = chen2014_seqlogos, limitsize = FALSE, 
+    base_width = 60, base_height = 50, nrow = 1, units = "cm")
+  # ggplot2::ggsave(plot = chen2014_seqlogos, device = devc,
+  #                 filename = use_fname, 
+  #                 dpi=300, width=8, height=10, units = "in")
+  
+}
+
+knitr::include_graphics(file.path(figures_path, tail(use_device,1),
+        "archR_supp_figure_modEncode_seqlogos_iter4.pdf"))
+
+
+```
+
+
+
+\newpage
+# seqArchR parameters choices  for all organisms
+
+ The values chosen for different parameters for seqArchR are given in Table \@ref(tab:table-per-org-choices).
+ 
+| Organism |  minTPM | Flank size | Bound value | #Iterations | Collation strategy |
+|----------|:-------:|:--------------------:|:-----------:|------------:|-------------------:|
+| Fruit fly | 1 | $-45$, $+45$  | 1e-08 |     5       |     \texttt{FTTTF}         |
+| Zebrafish | 1 | $-50$, $+150$ | 1e-06 |     5       |     \texttt{FTFFF}         |
+| Humans    | 1 | $-50$, $+5$   | 1e-06 |     5       |     \texttt{FTTTF}         |
+|           | 1 | $-50$, $+150$ | 1e-06 |     5       |     \texttt{FTTTF}         |
+
+: (\#tab:table-per-org-choices) Choices for each organism for preparing data and analysing with seqArchR. 
+minTPM, minimum Tags per million, Bound value for instability of identified clusters.
+
+
+\newpage
+# Supplementary figures of results on Drosophila core promoters from [@schor2017promoter]
+
+## Visualisation showing curation of seqArchR result clusters for D.melanogaster
+In Supplementary Figures \@ref(fig:dm-result1-cluster-collation-supp-figure), \@ref(fig:dm-result2-cluster-collation-supp-figure), and \@ref(fig:dm-result3-cluster-collation-supp-figure), we show the curation of raw clusters (of promoter sequences) from seqArchR result for the different stages processed in D. melanogaster.
+Note that, here, the clusters are shown ordered by the hierarchical clustering dendrogram (sequence logos on the left). 
+Their order upon curation is arbitrary (sequence logos on the right).
+The final set of curated clusters is then ordered by their IQW and visualised in the figures in the main text.
+
+
+```{r dm-result1-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 2-4h AEL, D.melanogaster",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[1]],  "RAL28_2_to_4_dend_arch_list_cor_ward.D_18clusters_final.pdf"))
+
+```
+
+
+```{r dm-result2-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 6-8h AEL, D.melanogaster",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[2]],  "RAL28_6_to_8_dend_arch_list_cor_complete_19clusters_final.pdf"))
+
+```
+
+```{r dm-result3-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 10-12h AEL, D.melanogaster",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[3]],  "RAL28_10_to_12_sample12_dend_arch_list_euclid_ward.D_16clusters_final.pdf"))
+
+```
+
+\newpage
+## Cluster containing non-His2B genes with His2B genes
+
+Observe that while most identified clusters with histone gene promoters are exclusive, only His2B promoters have been categorised with other non-His2B promoter sequences.
+We note that this is due to our approach to detect over-fitting (see step 2c in the Algorithm in the Methods section in the main text).
+NMF does separate out the non-His2B promoters from this cluster, but the over-fitting procedure adjudges it as overfit, and seqArchR, thus, re-assigns them back together with the base cluster (bringing His2B $+$ non-His2B promoters together). 
+Hence, the overall set of sequences remains unclustered/corrupted in the final result.
+
+```{r dm-result-his2b-corrupt-cluster-supp-figure, fig.cap="Visualisation of alignment of sequences in cluster C4X in D.melanogaster results", out.extra = 'angle=90', out.width="125%", fig.align='center'}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[1]],  "His2B_cluster_DNA_sequences_Sample_RAL28_2_to_4_clust4.html_screenshot.png"))
+
+```
+\newpage
+
+
+## GO terms enriched for different clusters in Drosophila melanogaster development
+
+```{r go-terms-comparison-dm, fig.align='center', fig.cap="Visualisation of top-10 GO terms enriched for various clusters at different developmental stages of Drosophila melanogaster.", out.height="45%"}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[3]], 
+                                  paste0("combined_top5_GO_term_enrichments_Drosophila_clusters.pdf")))
+
+
+```
+
+```{r go-terms-comparison-dm2, fig.align='center', fig.cap="Visualisation of top-10 GO terms enriched for various clusters at different developmental stages of Drosophila melanogaster.", out.height="70%"}
+
+knitr::include_graphics(file.path(dm_result_dir_path[[3]], 
+                                  paste0("combined_top10_GO_term_enrichments_Drosophila_clusters.pdf")))
+
+
+```
+
+
+
+
+\newpage
+# Supplementary figures of results on Zebrafish core promoters from [@nepal2013dynamic]
+
+## Visualisation showing curation of seqArchR result clusters for D.rerio
+In Supplementary Figures \@ref(fig:zf-result1-cluster-collation-supp-figure), \@ref(fig:zf-result2-cluster-collation-supp-figure), and \@ref(fig:zf-result3-cluster-collation-supp-figure), we show the curation of raw clusters (of promoter sequences) from seqArchR result for the different stages processed for Danio rerio.
+Note that, here, the clusters are shown ordered by the hierarchical clustering dendrogram (sequence logos on the left). 
+Their order upon curation is arbitrary (sequence logos on the right).
+The final set of curated clusters is then ordered by their IQW and visualised in the figures in the main text.
+
+
+```{r zf-result1-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 64 cells stage, D.rerio", out.width="105%", out.height="75%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[1]],  "64_cells_dend_arch_list_cor_ward.D_5clusters_final.pdf"))
+
+```
+
+
+```{r zf-result2-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 30\\% epiboly/dome stage, D.rerio",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[2]],  "dome_30perc_epiboly_dend_arch_list_cor_ward.D_12clusters_final.pdf"))
+
+```
+
+```{r zf-result3-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for prim6, D.rerio",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],  "prim6_dend_arch_list_cor_ward.D_12clusters_final.pdf"))
+
+```
+
+\newpage
+## Overlaps between promoter sequences at all stages in D.rerio
+
+Similar to the rightmost panel figure for Drosophila stage figures, we visualise 
+the overlaps between tag clusters at every developmental stage in zebrafish.
+
+
+```{r zf-cluster-overlaps-supp-figure, fig.cap="Visualisation of the overlaps between promoter sequences per developmental stage for D.rerio. Stages are abbreviated as follows. 64C: 64 cells stage; D: 30\\% epiboloy/dome stage; P6: prim6 stage.",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],  "zf_figure_showing_overlaps_for_stages.pdf"))
+
+```
+
+\newpage
+## Top-10 GO term enrichments for clusters
+
+```{r zf-result1-top10-go-supp-figure, fig.cap="Top-10 enriched GO terms for selected clusters across ZF developmental stages.", out.extra = 'angle=0', out.width="100%", fig.align='center'}
+
+knitr::include_graphics(file.path(zf_result_dir_path[[3]],  "combined_top10_GO_mix_clusts.pdf"))
+
+```
+
+
+
+
+
+\newpage
+
+# Supplementary figures of results on human cell lines core promoters from ENCODE
+
+We processed promoter sequences obtained using ENCODE CAGE data in human cell 
+lines and tissues. 
+Supplementary Figure 14 shows the library sizes of various cell lines 
+(including replicates) obtained from ENCODE and used upon merging together.
+The experiments were performed with different sizes of flanks around the TSS.
+Specifically, upstream flank of 50 bp was combined with a short, 5 bp flank 
+and a longer, 150 bp, flank downstream.
+The rationale for this is explained in the main text, the Results subsection 
+on Homo sapiens.
+
+
+```{r human-cell-lines-plot, fig.align='center', fig.cap="CAGE library sizes for all different human cell lines available from ENCODE and included in this study."}
+
+knitr::include_graphics(file.path(data_path, "human", "human_cellGroup_cage_libSizes_all70_cell.pdf"))
+
+
+```
+
+
+
+## Visualisation showing curation of seqArchR result clusters for H.sapiens
+In Supplementary Figures \@ref(fig:hg-result1-cluster-collation-supp-figure), 
+we show the curation of raw clusters (of promoter sequences) from seqArchR 
+result for the different stages processed for Danio rerio.
+Note that, here, the clusters are shown ordered by the hierarchical clustering 
+dendrogram (sequence logos on the left). 
+Their order upon curation is arbitrary (sequence logos on the right).
+The final set of curated clusters is then ordered by their IQW and visualised 
+in the figures in the main text.
+
+
+```{r hg-result1-cluster-collation-supp-figure, fig.cap="Visualisation of the collation and curation of clusters from seqArchR raw result for 2-4h AEL, D.melanogaster",  out.width="105%", fig.align='center'}
+
+knitr::include_graphics(file.path(hg_result_dir_path[[1]],  "human_cellGroup_merged_dend_arch_list_cor_ward.D_8clusters_final.pdf"))
+
+```
+
+
+## Comparison of cluster architectures in shorter vs longer downstream flank scenario
+
+To observe the effect of the downstream flanking region on the clusters 
+identified by seqArchR, we processed two sets of core promoter sequences: 
+one with shorter downstream flank (\{$-$50, $+$5\} bp) around the dominant CTSS 
+and another with longer downstream flank (\{$-$50, $+$150\} bp).
+Supplementary Figure \@ref(fig:human-result-sankey1-supp-figure) visualises the sequence 
+logos of promoter architectures per cluster for both cases, shorter flanks 
+on the left, longer flanks on the right. 
+These are separated by a Sankey diagram that shows the movement/exchange of 
+promoter sequences between the two sets of clusters.
+
+```{r human-result-sankey1-supp-figure, fig.cap="Sankey diagram showing movement of promoter sequences in two clusterings: using flanks of \\{$-$50, $+$5\\} and \\{$-$50, $+$150\\} around the dominant TSS.", out.extra = 'angle=90', out.width="120%", fig.align='center'}
+
+knitr::include_graphics(file.path("nonKO_short_long_combined.pdf"))
+
+```
+
+\newpage
+
+## Comparison of cluster architectures in initiator knock out vs non-knock out scenario
+
+To observe the effect of the initiator sequence (Inr) on the clustering, we 
+excluded the Inr sequence positions from clustering and compared how the 
+clustering of the core promoter sequences changed. 
+This is visualised in Supplementary Figure \@ref(fig:human-result-sankey2-supp-figure).
+The sequence logos on the left are for clusters obtained by retaining/using 
+the Inr sequence [$-5,+5$ around the TSS] when clustering vs excluding it 
+when performing clustering on the right. The Sankey diagram in the middle 
+shows the movement of promoter sequences in the two clusterings. Note that 
+the position labels for the sequence logos on the right go from \{$-50,-6$\} 
+and \{$+6,+150$\}.
+
+```{r human-result-sankey2-supp-figure, fig.cap="Sankey diagram showing effect of Inr knockout on the clustering.", out.extra = 'angle=90', out.width="135%", fig.align='center'}
+
+knitr::include_graphics(file.path("nonKO_vs_KO_long_combined.pdf"))
+
+```
+
+
+\newpage
+# References
