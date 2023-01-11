@@ -1,7 +1,8 @@
 
 # Repository of supporting information for seqArchR manuscript
 
-**Citation information:** <Insert here>
+**Citation information:** 
+<Insert here>
 
 
 **seqArchR links**
@@ -89,7 +90,13 @@ experiments-related files (including analysis figures) are available under
 
 
 All figures for the paper can be generated using the
-Rmarkdown documents in this folder.
+Rmarkdown (Rmd) documents in this folder. 
+These Rmd files can be run as is at your end, but some R/shell 
+scripts can't be run as is. 
+The shell scripts are used for submitting long-running parallel seqArchR runs 
+(corresponding R scripts) as jobs on Slurm at our end. 
+They also refer to the relevant conda environment (required for seqArchR) at 
+our end which will not work at your end.
 
 ==================  MANUSCRIPT ==================
 - manuscript

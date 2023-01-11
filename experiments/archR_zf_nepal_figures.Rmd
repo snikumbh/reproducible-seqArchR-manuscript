@@ -35,7 +35,7 @@ results_path <- file.path("results")
 data_path_on_disk <- data_path
 result_path_on_disk <- results_path
 ##
-archR_org_data_path <- file.path(data_path, "zebrafish-nepal2013/new")
+archR_org_data_path <- file.path(data_path, "zebrafish-nepal2013")
 archR_org_results_path <- file.path(results_path, "zebrafish-nepal2013/with_archR_v0.1.8")
 
 
@@ -129,8 +129,6 @@ library(DT)
 ## Plots for sections marked TRUE are included in this report.
 
 ```{r all_funcs, include=FALSE, collapse=TRUE}
-
-# devtools::load_all("/mnt/biggley/home/sarvesh/projects/promoter-architectures-all/clustering-promoter-architectures/archR-public/archR")
 
 source('helper-funcs.R')
 
@@ -2206,7 +2204,10 @@ cowplot::save_plot(filename = file.path(result_dir_path[[3]],
 
 ```{r}
 
-shifting_prom <- readxl::read_excel("/mnt/biggley/home/sarvesh/projects/promoter-architectures-all/clustering-promoter-architectures/promArch_only_for_biorxiv_manuscript/promArch/manuscript/biorxiv/experiments/data/zebrafish-shifting-promoters/41586_2014_BFnature12974_MOESM327_ESM.xls", skip = 1)
+shifting_prom <- readxl::read_excel(
+    file.path(data_path, "zebrafish-shifting-promoters", 
+        "41586_2014_BFnature12974_MOESM327_ESM.xls"), 
+    skip = 1)
 
 cl_char <- c("X", "Y", "Z")
 perSample_perClust_shiftingProm <- vector("list", length(sample_names))

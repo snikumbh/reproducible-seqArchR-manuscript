@@ -14,7 +14,7 @@ nseqs_mult <- c(1, 5, 10, 25, 50)
 ifToMut <- c(FALSE, TRUE, TRUE, TRUE)
 
 py_str <- "python3.9"
-prog_name <- "toy-seq-generation/generateData.py"
+prog_name <- "../../toy-seq-generation/generateData.py"
 optionT <- "-T 1" ## motfis given in file
 optionF <- "-F"  ## motif filename
 optionN <- "-N"  ## number of sequences
@@ -28,7 +28,7 @@ optionO <- "-O"  ## output filename
 optionA <- "-A"  ## append str
 
 
-use_file_path <- file.path("data", "simulated-data", "try_script_again_for_25_and_50k")
+use_file_path <- file.path("data", "simulated-data")
 cmds_filename <- file.path(use_file_path, "cmds-generate-simulated-data_nseqs.sh")
 cmds_file <- file(cmds_filename, "w")
 

@@ -37,10 +37,7 @@ result_path_on_disk <- results_path
 ##
 archR_org_data_path <- file.path(data_path, "human")
 use_minTPM <- 1
-archR_org_results_path <- file.path(results_path, "human"
-                                    # "newly_processed", 
-                                    # paste0("minTPM_", use_minTPM)
-    )
+archR_org_results_path <- file.path(results_path, "human")
 
 
 ##
@@ -432,7 +429,7 @@ perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
 ## The above benchmarking paper finds Tau to be the most robust and sensitive 
 ## measure of tissue specificity. 
 ## 
-tissueSpecTau <- read_csv(file.path(data_path, "tissueSpecificity_tau", 
+tissueSpecTau <- read_csv(file.path(data_path, "tissueSpecificity-tau", 
                                     "Tau_score", "Tau_gene_V8.csv"), 
                           col_names = TRUE, show_col_types = FALSE)
 
