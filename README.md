@@ -12,7 +12,9 @@
 
 1. `git clone` this repository
 
-2. This is a [`remake`](https://github.com/snikumbh/remake)-based pipeline. 
+2. This is a `remake`-based reproducible pipeline
+(originally available [here](https://github.com/richfitz/remake); a forked 
+version [here](https://github.com/snikumbh/remake)).
 To run the analyses, start R and when you have remake installed, just type 
 `remake::make()` at the R prompt.
 
