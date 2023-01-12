@@ -2014,7 +2014,7 @@ for(sn in sample_names){
 ### For paper: GO terms enrichment
 
 
-```{r}
+```{r paper-go-term-enrichments}
 
 
 ## no ww signal/WW-box arch

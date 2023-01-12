@@ -26,7 +26,7 @@ title: "`r params$use_title`"
 
 
 ```{r setup, include=FALSE}
-# knitr::opts_chunk$set(collapse=FALSE)
+
 
 data_path <- file.path("data")
 results_path <- file.path("results")
@@ -84,10 +84,10 @@ seed_val <- 11992288
 set.seed(seed_val)
 
 
-library(BSgenome.Drerio.UCSC.danRer10)
-library(TxDb.Drerio.UCSC.danRer10.refGene)
-library(org.Dr.eg.db)
-library(ggeasy)
+library(BSgenome.Drerio.UCSC.danRer10)                    # Bioconductor v1.4.2
+library(TxDb.Drerio.UCSC.danRer10.refGene)                # Bioconductor v3.4.6
+library(org.Dr.eg.db)                                     # Bioconductor v3.16.0
+library(ggeasy)                                           # CRAN v0.1.3
 
 ##
 # # CAGEr  1.20
@@ -100,21 +100,21 @@ library(ggeasy)
 # library(CAGEr, lib.loc="/usr/local/lib/R/backports")   # version 1.20
 # ### end CAGEr 1.20
 ##
-library(CAGEr, lib.loc = "/usr/local/lib/R/site-library")
-library(readr)
-library(reshape2)
-library(ggplot2)
-library(forcats)
-library(patchwork)
-library(cowplot)
-library(wesanderson)
+library(CAGEr, lib.loc = "/usr/local/lib/R/site-library") # not installed on this machine vNA
+library(readr)                                            # CRAN v2.1.3
+library(reshape2)                                         # CRAN v1.4.4
+library(ggplot2)                                          # CRAN v3.4.0
+library(forcats)                                          # CRAN v0.5.2
+library(patchwork)                                        # CRAN v1.1.2
+library(cowplot)                                          # CRAN v1.1.1
+library(wesanderson)                                      # CRAN v0.3.6
 ## ^ for plotting
 ## 
 ## GenomeInfoDb now available in sarvesh's user library
-library(GenomeInfoDb)
-library(ChIPseeker)
-library(clusterProfiler)
-library(DT)
+library(GenomeInfoDb)                                     # Bioconductor v1.34.4
+library(ChIPseeker)                                       # Bioconductor v1.34.1
+library(clusterProfiler)                                  # Bioconductor v4.6.0
+library(DT)                                               # CRAN v0.26
 
 
 
@@ -260,10 +260,9 @@ for(sn in sample_names){
 
 
 
-```{r make-cager-obj, echo=FALSE, cache=TRUE, collapse=TRUE}
+```{r make-cager-obj, echo=FALSE, collapse=TRUE}
 
-## rtracklayer::ucscGenomes()[ , "db"]
-## supportedUCSCtables("danRer10")
+
 
 ## Making an ensGene txdb from scratch, because using refGene is not recommended
 txdb_ensGene_fname <- file.path(archR_org_data_path, paste0("TxDb.Drerio.UCSC.danRer10.ensGene_self.2021-06-19.sqlite"))
@@ -501,34 +500,12 @@ use_aggl <- 'ward.D'
 use_dist <- 'cor'
 
 
-# iter5_clusts <- archR::collate_archR_result(
-#   result = zf_2013_result[[sample_names[1]]],
-#   iter = itr, clust_method = 'hc', aggl_method = use_aggl,
-#   dist_method = use_dist, regularize = TRUE, topn = 50,
-#   flag = list(debugFlag = TRUE, verboseFlag = TRUE), collate = TRUE,
-#   return_order = FALSE, minClusters = 4)
-
 iter5_clusts_reord <- archR::collate_archR_result(
   result = zf_2013_result[[sn]],
   iter = itr, clust_method = 'hc', aggl_method = use_aggl,
   dist_method = use_dist, regularize = TRUE, topn = 50,
   flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE,
   return_order = TRUE)
-
-
-# iter5_clusts_reord1 <- archR::collate_archR_result(
-#   result = zf_2013_result[[sn]],
-#   iter = itr, clust_method = 'hc', aggl_method = "ward.D",
-#   dist_method = "euclid", regularize = TRUE, topn = 50,
-#   flag = list(debugFlag = TRUE, verboseFlag = TRUE), collate = FALSE,
-#   return_order = TRUE)
-# 
-# iter5_clusts_reord2 <- archR::collate_archR_result(
-#   result = zf_2013_result[[sn]],
-#   iter = itr, clust_method = 'hc', aggl_method = "complete",
-#   dist_method = "cor", regularize = TRUE, topn = 50,
-#   flag = list(debugFlag = TRUE, verboseFlag = TRUE), collate = FALSE,
-#   return_order = TRUE)
 
 
 ## Zebrafish result final clustering already uses cor + complete linkage
@@ -612,20 +589,6 @@ sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
                rawSeqs = zf_2013_result[[sn]]$rawSeqs,
                palette = FALSE, plot_png = FALSE)
 
-
-# use_color <- scales::hue_pal()(length(unique(temp_clusts)))
-# sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2,
-#                use_cutk = use_cutk,
-#                #length(unique(temp_clusts)),
-#                clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
-#                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
-#                k_colors = use_color, plot_png = FALSE,
-#                palette = FALSE)
-# 
-# 
-# clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
-# seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[ sn ]]$seqsClustLabels[[itr]]))
-###
 
 
 cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
@@ -750,20 +713,6 @@ sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
                palette = FALSE, plot_png = FALSE)
 
 
-# use_color <- scales::hue_pal()(length(unique(temp_clusts)))
-# sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2,
-#                use_cutk = use_cutk,
-#                #length(unique(temp_clusts)),
-#                clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
-#                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
-#                k_colors = use_color, plot_png = FALSE,
-#                palette = FALSE)
-# 
-# 
-# clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
-# seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[ sn ]]$seqsClustLabels[[itr]]))
-###
-
 ###
 
 cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
@@ -855,7 +804,6 @@ for(sn in sample_names) {
                              strand = zf_nepal2013_bed_info[[sn]]$strand,
                              IQW = zf_nepal2013_bed_info[[sn]]$IQW,
                              domTPM = zf_nepal2013_bed_info[[sn]]$domTPM,
-                             # phast = phastCons_scores[[sn]],
                              clust_ID = clust_lab)
 }
 
@@ -994,14 +942,6 @@ if(do_IQW_TPM_plots){
                   ggeasy::easy_x_axis_labels_size(size=18) +
                   NULL
         ##
-        # pl_phast <- get_iqw_ord_plot(phast = TRUE, y_axis_text = FALSE, 
-        #             samarth_df = samarth_df[[sn]], 
-        #             seqs_clust = seqs_clusters_as_list_ordered[[sn]])
-        # pl_phast <- pl_phast + ggeasy::easy_all_text_size(size=18) + 
-        #           NULL +
-        #           # ggeasy::easy_y_axis_labels_size(size=18) +
-        #           ggeasy::easy_x_axis_labels_size(size=18) +
-        #           NULL
         ## IQW ordered plots
         iqw_tpm_ord_pls <- pl_iqw | pl_tpm
         # iqw_tpm_phast_ord_pls <- pl_iqw | pl_tpm | pl_phast
@@ -1217,19 +1157,6 @@ genes <- lapply(genes1, function(x){
 })
 
 
-# MatchScores <- unlist(lapply(1:length(perSample_archR_clusts[[sn]]), function(x){
-#       ## To sort by motif scores, get motif scores first 
-#       motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
-#       ##
-#       sorted <- sort(motif_scores, index.return=TRUE, 
-#                       decreasing = TRUE)
-#       ##
-#       paste0('<a href="">', form_str(sorted$x), 
-#         '</a>', collapse=", <br/> ")
-#     }))
-# 
-#  message(length(genes), " & ", length(MatchScores))
-
 ```
 
 
@@ -1324,19 +1251,6 @@ genes <- lapply(genes1, function(x){
                   caption = paste0("TSS info [", nrow(x), " entries] sorted by the gene symbol"))
 })
 
-
-# MatchScores <- unlist(lapply(1:length(perSample_archR_clusts[[sn]]), function(x){
-#       ## To sort by motif scores, get motif scores first 
-#       motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
-#       ##
-#       sorted <- sort(motif_scores, index.return=TRUE, 
-#                       decreasing = TRUE)
-#       ##
-#       paste0('<a href="">', form_str(sorted$x), 
-#         '</a>', collapse=", <br/> ")
-#     }))
-# 
-# # message(length(genes), " & ", length(MatchScores))
 
 ```
 
@@ -1434,18 +1348,6 @@ genes <- lapply(genes1, function(x){
 })
 
 
-# MatchScores <- unlist(lapply(1:length(perSample_archR_clusts[[sn]]), function(x){
-#       ## To sort by motif scores, get motif scores first
-#       motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
-#       ##
-#       sorted <- sort(motif_scores, index.return=TRUE,
-#                       decreasing = TRUE)
-#       ##
-#       paste0('<a href="">', form_str(sorted$x),
-#         '</a>', collapse=", <br/> ")
-#     }))
-
-
 
 ```
 
@@ -1473,36 +1375,19 @@ if(do_IQW_TPM_plots){
                     samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
                     seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
                     use_suffix = suffix_label[sn], use_notch = FALSE)
-        # pl_iqw <- pl_iqw + ggeasy::easy_all_text_size(size=18) + 
-        #           NULL +
-        #           ggeasy::easy_y_axis_labels_size(size=18) +
-        #           ggeasy::easy_x_axis_labels_size(size=18) +
-        #           NULL
+        
         ##
         pl_tpm <- get_iqw_ord_plot(tpm = TRUE, y_axis_text = FALSE, 
                     samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
                     seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
                     use_suffix = suffix_label[sn], use_notch = FALSE)
-        # pl_tpm <- pl_tpm + ggeasy::easy_all_text_size(size=18) + 
-        #           NULL +
-        #           # ggeasy::easy_y_axis_labels_size(size=18) +
-        #           ggeasy::easy_x_axis_labels_size(size=18) +
-        #           NULL
-        ##
-        # pl_phast <- get_iqw_ord_plot(phast = TRUE, y_axis_text = FALSE, 
-        #             samarth_df = samarth_df[[sn]], 
-        #             seqs_clust = seqs_clusters_as_list_ordered[[sn]])
-        # pl_phast <- pl_phast + ggeasy::easy_all_text_size(size=18) + 
-        #           NULL +
-        #           # ggeasy::easy_y_axis_labels_size(size=18) +
-        #           ggeasy::easy_x_axis_labels_size(size=18) +
-        #           NULL
+        
         ## IQW ordered plots
         iqw_tpm_ord_pls <- pl_iqw | pl_tpm
-        # iqw_tpm_phast_ord_pls <- pl_iqw | pl_tpm | pl_phast
-        perSample_pl[[sn]] <- iqw_tpm_ord_pls #iqw_tpm_phast_ord_pls
         
-        # title_str <- paste0("Sample_", sn, "_IQW_TPM_phast_plot")
+        perSample_pl[[sn]] <- iqw_tpm_ord_pls 
+        
+        
         title_str <- paste0("Sample_", sn, "_IQW_TPM_plot")
         pl_w_title <- perSample_pl[[sn]] + plot_annotation(title = title_str)
         cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
@@ -2198,64 +2083,6 @@ cowplot::save_plot(filename = file.path(result_dir_path[[3]],
 
 
 
-
-
-## For paper: Where are the shifting promoters
-
-```{r}
-
-shifting_prom <- readxl::read_excel(
-    file.path(data_path, "zebrafish-shifting-promoters", 
-        "41586_2014_BFnature12974_MOESM327_ESM.xls"), 
-    skip = 1)
-
-cl_char <- c("X", "Y", "Z")
-perSample_perClust_shiftingProm <- vector("list", length(sample_names))
-for(sn in seq_along(sample_names)){
-    perSample_perClust_shiftingProm[[sn]] <- 
-        lapply(seq_along(perSample_archR_clusts[[sn]]), function(x){
-        sam_df <- as.data.frame(perSample_peakAnno[[sn]])
-        this_entrez <- sam_df$ENTREZID[perSample_archR_clusts[[sn]][[x]]]
-        shift_entrez <- shifting_prom$entrezgene
-        ## intersections in this cluster
-        which_present <- intersect(shift_entrez, this_entrez)
-        message("C", x, cl_char[sn], " = ", length(which_present))
-        which_present
-    })
-}
-
-pl_list <- vector("list", length(sample_names))
-for(sn in seq_along(sample_names)){
-    sam_df <- data.frame(Clusters = 
-            paste0("C", seq(length(perSample_perClust_shiftingProm[[sn]])), cl_char[sn]),
-            ShiftingPromoters = lengths(perSample_perClust_shiftingProm[[sn]]))
-
-    pl_list[[sn]] <- ggpubr::ggbarplot(sam_df, y = "ShiftingPromoters", x = "Clusters", 
-        label = TRUE, label.pos = "out", x.text.angle = 45, fill = "grey",
-        ylab = paste0("#Shifting Promoters (", sum(sam_df$ShiftingPromoters), "/911)"))
-}
-
-
-grid_pl2 <- cowplot::plot_grid(plotlist = pl_list, ncol = 3)#, rel_widths = c(0.6, 1, 1))
-cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
-                    paste0("zebrafish_figure_paper_shiftingProm_proportion_all_samples.pdf")),
-                plot = grid_pl2, ncol = 4, 
-                base_height = 4, base_width = 3,
-                limitsize=FALSE, dpi = 300, device = "pdf")
-
-
-grid_pl3 <- cowplot::plot_grid(grid_pl, grid_pl2, nrow = 2)
-cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
-                    paste0("zebrafish_figure_paper_chr4_prop_shiftingProm_prop_all_samples.pdf")),
-                plot = grid_pl3, ncol = 4, 
-                base_height = 8, base_width = 3,
-                limitsize=FALSE, dpi = 300, device = "pdf")
-
-
-```
-
-
-
 # Session Info
 
 ```{r sessionInfo, echo=FALSE}
@@ -2263,3 +2090,4 @@ cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
 sessionInfo()
 
 ```
+

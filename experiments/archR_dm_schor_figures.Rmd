@@ -3,7 +3,7 @@ author: "Sarvesh Nikumbh"
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output: 
   bookdown::html_document2:
-    code_folding: hide
+    keep_md: true
     toc: true
     toc_float: true
     number_sections: true
@@ -39,11 +39,6 @@ result_path_on_disk <- results_path
 archR_org_data_path <- file.path(data_path, "drosophila-schor2017")
 archR_org_results_path <- file.path(results_path, "drosophila-schor2017", 
                                     "with_archR_v0.1.8")
-## The newly_processed folder contains results upon reprocessing the raw CAGE data 
-## to mitigate the double application of 'removeFirstG' using CAGEr.
-## This was caused due to removal of first G being already applied by the authors Schor et al. 2017 while the CAGEr processing pipeline that was used for processing CAGE data for all organisms accidentally re-applied this correction. 
-## This resulted is the TGT architecture to be shifted upstream by 1 nucleotide, i.e.,
-## instead of the G occurring at +1 (as expected), the T on its right appeared at +1 position.
 ## 
 
 ##
