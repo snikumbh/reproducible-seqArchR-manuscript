@@ -12,8 +12,9 @@
 
 1. `git clone` this repository
 
-2. Start R and run/source the script `get-seqArchR-manuscript-zenodo-archive.R`
-  for fetching the Zenodo archive containing large data and result files
+2. This is a [`remake`](https://github.com/snikumbh/remake)-based pipeline. 
+To run the analyses, start R and when you have remake installed, just type 
+`remake::make()` at the R prompt.
 
 3. All script files (R scripts, Rmarkdown files, shell scripts) are available
   in this repository
@@ -37,18 +38,18 @@ experiments-related files (including analysis figures) are available under
 ==================  EXPERIMENTS ==================
 - experiments
     - data
-       - simulated-data
-       - drosophila-schor2017
-       - drosophila-chen2014
-       - zebrafish-nepal2013
-       - human
-       - dual-initiation-promoters
-       - tissueSpecificity_tau
+        - simulated-data
+        - drosophila-schor2017
+        - drosophila-chen2014
+        - zebrafish-nepal2013
+        - human
+        - dual-initiation-promoters
+        - tissueSpecificity-tau
     
     - results
        - simulated-data
        - comparison-approaches
-       - dorosphila-chen2014
+       - drosophila-chen2014
        - drosophila-schor2017
        - zebrafish-nepal2013
        - human

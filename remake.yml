@@ -1,0 +1,71 @@
+packages:
+  - utils
+  - seqArchR
+  - seqArchRplus
+  - BSgenome
+  - BSgenome.Hsapiens.UCSC.hg19
+  - org.Hs.eg.db
+  - Biostrings
+  - ChIPseeker # ChIPseeker for ChIP peak Annotation, Comparison, and Visualization
+  - GenomicRanges # Representation and manipulation of genomic intervals
+  - IRanges
+  - AnnotationDbi
+  - GenomicFeatures
+  - ggplot2
+  - cowplot
+  - patchwork
+  - ggsankey
+  - forcats
+  - ggpubr
+  - dplyr
+  - readr
+  - rmarkdown
+
+
+sources:
+  - experiments/helper-funcs.R
+  - remake-helper-funcs.R
+
+targets:
+  all:
+    depends:
+      - hs_analysis
+      - hs_add_analysis
+      - dm_analysis
+      - zf_analysis
+
+  fetch_zenodo_data:
+    command: fetch_and_setup_zenodo_data()
+
+  ## Get filenames of additional analysis scripts
+  add_hs_rmd_files:
+    command: get_hs_add_rmd()
+
+  dm_rmd_file:
+    command: get_dm_rmd()
+
+  zf_rmd_file:
+    command: get_zf_rmd()
+
+  hs_rmd_file:
+    command: get_hs_rmd()
+
+  ## Main human analysis
+  hs_analysis:
+    depends: fetch_zenodo_data
+    command: run_org_analysis(hs_rmd_file)
+
+  ## Additional human analysis
+  hs_add_analysis:
+    depends: fetch_zenodo_data
+    command: run_org_analysis(add_hs_rmd_files)
+
+  ## Drosophila analysis
+  dm_analysis:
+    depends: fetch_zenodo_data
+    command: run_org_analysis(dm_rmd_file)
+
+  ## Zebrafish analysis
+  zf_analysis:
+    depends: fetch_zenodo_data
+    command: run_org_analysis(zf_rmd_file)
