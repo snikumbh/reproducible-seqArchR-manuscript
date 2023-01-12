@@ -1,5 +1,6 @@
 fetch_and_setup_zenodo_data <- function(){
 
+    message("Downloading data from Zenodo. This could take some time.")
     fname <- "experiments/seqArchR-manuscript-zenodo-archive.zip"
     utils::download.file(url = "https://zenodo.org/record/5055408/files/snikumbh/archR-v0.1.8.zip?download=1",
         destfile = fname, method = "wget")
