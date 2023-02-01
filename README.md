@@ -33,7 +33,7 @@ Below is the detailed explanation of the folder structure and files.
 ```
 - experiments
 - manuscript
-- get-seqArchR-manuscript-zenodo-archive.R (fetch Zenodo archive)
+- remake-helper-funcs.R
 ```
 
 All manuscript related files are available under folder `manuscript`, and all
