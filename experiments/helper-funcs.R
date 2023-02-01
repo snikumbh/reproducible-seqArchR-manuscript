@@ -107,14 +107,6 @@ form_str <- function(str){
 get_tissue_spec_scores <- function(df, tissueSpec_values, ensId){#archR_clusts, sn, clust_id){
     # df_obj is the peakAnno as.data.frame
 
-    # seqs <- archR_clusts[[sn]][clust_id][[1]]
-    # retVals <- lapply(seqs, function(x){
-    #     idx1 <- which(tissueSpec_values$ensembl_gene_id == df_obj[x, "geneId"])
-    #     #idx2 <- which(tissueSpec_values$ensembl_transcript_id == df_obj[x,"transcriptId"])
-    #     retVal <- tissueSpec_values$aucRatio[idx1]
-    #     retVal
-    # })
-    # unlist(retVals)
     ##
     idx1 <- which(tissueSpec_values$ensembl_gene_id == ensId)
     subset(tissueSpec_values, ensembl_gene_id == ensId)
@@ -122,24 +114,12 @@ get_tissue_spec_scores <- function(df, tissueSpec_values, ensId){#archR_clusts, 
 }
 
 get_motif_scores <- function(result_obj, archR_clusts, sn, clust_id, unif_bg = TRUE, logodds = TRUE){
-    # print(names(seqs[1:10]))
+
     # get sequences from archR result object for only the sequences in the cluster
     seqs <- result_obj[[sn]]$rawSeqs[archR_clusts[[sn]][clust_id][[1]]]
     # fetch scores
     motif_scores <- simply_scores_mat(seqs, use_unif_bg = unif_bg, logodds = logodds)
-    # sam_names <- names(sam_scores)
-    # #
-    # motif_scores <- unlist(lapply(seq_along(sam_scores), function(x){
-    #   strand_info <- strsplit(strsplit(sam_names[x], "\\(")[[1]][2], "")[[1]][1]
-    #   if(strand_info == "+"){
-    #       sam_scores[[x]][1]
-    #   }else{
-    #       sam_scores[[x]][91+1]
-    #   }
-    #   }))
-    # motif_scores <- as.numeric(format(motif_scores,
-    #                         trim = TRUE, digits = 3, nsmall = 2, scientific = TRUE))
-    # print(names(seqs[1:10]))
+
     motif_scores
 }
 ##
@@ -198,8 +178,7 @@ check_and_create_dir <- function(dir_path){
 get_go_term_dot_plot <- function(peakAnno, useOrgDb, useKeyType,
                                  choose_idx, plot_title_text,
                                  bar_or_dot = "dot", font.size = 10){
-    # any_NAs <- which(is.na(as.data.frame(peakAnno)[choose_idx, ]$ENSEMBL))
-    # plot_title_text <- paste(plot_title_text, length(any_NAs), "NAs")
+
     ##
     samarth_go <- tryCatch(enrichGO(gene =
                                 as.data.frame(peakAnno)[choose_idx, useKeyType],
