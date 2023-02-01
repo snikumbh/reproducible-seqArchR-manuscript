@@ -19,7 +19,8 @@ To run the analyses, start R and when you have remake installed, just type
 ```
 remake::make()
 ```
-at the R prompt.
+at the R prompt. This will (re-)generate the figures by knitting/running the 
+organism-specific Rmd files.
 
 3. All script files (R scripts, Rmarkdown files, shell scripts) are available
   in this repository
