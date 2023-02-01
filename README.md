@@ -5,7 +5,7 @@
 <Insert here>
 
 
-**seqArchR links**
+**seqArchR software links**
 - *Bioconductor:* http://www.bioconductor.org/packages/seqArchR
 - *Github link:* https://github.com/snikumbh/seqArchR
 - *Zenodo link:* https://doi.org/10.5281/zenodo.5003648
@@ -16,7 +16,10 @@
 (originally available [here](https://github.com/richfitz/remake); a forked 
 version [here](https://github.com/snikumbh/remake)).
 To run the analyses, start R and when you have remake installed, just type 
-`remake::make()` at the R prompt.
+```
+remake::make()
+```
+at the R prompt.
 
 3. All script files (R scripts, Rmarkdown files, shell scripts) are available
   in this repository
@@ -27,10 +30,11 @@ Below is the detailed explanation of the folder structure and files.
 
 
 ==================  TOP-LEVEL ==================
+```
 - experiments
 - manuscript
 - get-seqArchR-manuscript-zenodo-archive.R (fetch Zenodo archive)
-
+```
 
 All manuscript related files are available under folder `manuscript`, and all
 experiments-related files (including analysis figures) are available under
@@ -38,6 +42,7 @@ experiments-related files (including analysis figures) are available under
 
 
 ==================  EXPERIMENTS ==================
+```
 - experiments
     - data
         - simulated-data
@@ -90,21 +95,23 @@ experiments-related files (including analysis figures) are available under
     - archR_human_figures_150_downstream.Rmd
     - archR_human_figures_inr_KO_5_5_figures.Rmd
     - archR_human_figures_inr_KO_figures.Rmd
-
+```
 
 All figures for the paper can be generated using the
 Rmarkdown (Rmd) documents in this folder. 
-These Rmd files can be run as is at your end, but some R/shell 
-scripts can't be run as is. 
+These Rmd files for generating figures for the manuscript can be run as is at 
+your end, but some R/shell scripts can't be run as is. 
 The shell scripts are used for submitting long-running parallel seqArchR runs 
 (corresponding R scripts) as jobs on Slurm at our end. 
-They also refer to the relevant conda environment (required for seqArchR) at 
-our end which will not work at your end.
+They also refer to the relevant conda environment (required for seqArchR at 
+our end) that will not work at your end.
 
 ==================  MANUSCRIPT ==================
+```
 - manuscript
     - seqArchR_manuscript_GenomeBiology.Rmd
     - seqArchR_supplementary.Rmd
+```
 
 Some figures are generated directly in the manuscript Rmd file.
 Where they are generated outside the manuscript Rmd files, the
