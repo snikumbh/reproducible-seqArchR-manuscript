@@ -42,7 +42,7 @@ plot_dend_arch <- function(arch_plot, fname, use_ht = 40,
 
        new_arch_pl2 <- lapply(seq_along(new_arch_pl), function(x){
             pl <- new_arch_pl[[x]] +
-                ggtitle(paste0("Obtained by combining: ",
+                ggtitle(paste0("Cluster C", x ," Obtained by combining: ",
                                        paste(clust_assignment[[x]], collapse= ", "))) +
                 ggplot2::theme(axis.text = ggplot2::element_text(size = 0),
                                axis.text.x = ggplot2::element_text(
@@ -74,6 +74,8 @@ plot_dend_arch <- function(arch_plot, fname, use_ht = 40,
     return(sam_foo2)
 
 }
+## =============================================================================
+
 
 ## Get scores of how much the sequence matches the motif
 simply_scores_mat <- function(seqs, use_unif_bg = TRUE, logodds = TRUE){
@@ -99,10 +101,14 @@ simply_scores_mat <- function(seqs, use_unif_bg = TRUE, logodds = TRUE){
     }))
     sam_scores
 }
+## =============================================================================
+
 
 form_str <- function(str){
     return(format(str, trim = TRUE, digits = 3, nsmall = 2, scientific = TRUE))
 }
+## =============================================================================
+
 
 get_tissue_spec_scores <- function(df, tissueSpec_values, ensId){#archR_clusts, sn, clust_id){
     # df_obj is the peakAnno as.data.frame
@@ -112,6 +118,8 @@ get_tissue_spec_scores <- function(df, tissueSpec_values, ensId){#archR_clusts, 
     subset(tissueSpec_values, ensembl_gene_id == ensId)
     tissueSpec_values$aucRatio[idx1]
 }
+## =============================================================================
+
 
 get_motif_scores <- function(result_obj, archR_clusts, sn, clust_id, unif_bg = TRUE, logodds = TRUE){
 
@@ -122,7 +130,7 @@ get_motif_scores <- function(result_obj, archR_clusts, sn, clust_id, unif_bg = T
 
     motif_scores
 }
-##
+## =============================================================================
 
 ## Use this function to get n colors (in sequence) from the specified palette
 ## -- Can specify n greater than that existing in a palette, in which case
@@ -244,6 +252,8 @@ get_fixed_anno_ord <- function(){
 
     anno_terms_ord
 }
+## =============================================================================
+
 
 get_named_colors <- function(anno_terms_ord, palname = "Set1"){
     use_colors <- get_ncolors(n=length(anno_terms_ord), palname=palname)
@@ -251,6 +261,8 @@ get_named_colors <- function(anno_terms_ord, palname = "Set1"){
     names(use_colors) <- anno_terms_ord
     use_colors
 }
+## =============================================================================
+
 
 get_go_term_freq_plot <- function(peakAnno, choose_idx, plot_title_text,
                                   palname = "Set1", font.size = 10){
@@ -328,7 +340,7 @@ get_iqw_ord_plot <- function(iqw = FALSE, tpm = FALSE, phast = FALSE,
     clust_labels <- paste("C", 1:length(seqs_clust), use_suffix,
                           paste0(" (", clust_lens, ")"), sep="")
     clr <- RColorBrewer::brewer.pal(3, "Dark2")
-    #####
+    ##
     if(iqw){
         pl <- ggplot(samarth_df,
                      aes(y=fct_reorder(clust_ID, IQW,
@@ -343,7 +355,7 @@ get_iqw_ord_plot <- function(iqw = FALSE, tpm = FALSE, phast = FALSE,
                                                 mid = unit(0.6, "cm"),
                                                 long = unit(0.7, "cm"))
     }
-    ######
+    ##
     if(tpm){
         pl <- ggplot(samarth_df,
                      aes(y=fct_reorder(clust_ID, IQW,
@@ -438,11 +450,194 @@ get_strand_plot_title <- function(this_id, nclust, clust_names, this_n,
 
     title_str
 }
+## =============================================================================
 
 get_strand_specific_indices <- function(df, seq_ids_in_clust, strand_val = "+"){
     return(seq_ids_in_clust[which(df$strand[seq_ids_in_clust] == strand_val)])
 }
 ## =============================================================================
 
+add_dm_annotation <- function(clust_label, pl, txt_size = 24){
+    ## A list of annotations we wish to add
+    ## Identify these by their clust labels, e.g., C7X, C11Y etc.
+    ##
+    text_annots <- list(
+        "C7X" = list(geom = "text", label = "TCT Promoter", x = 59, y = 1.5),
+        "C11Y" = list(geom = "text", label = "TCT Promoter", x = 59, y = 1.5),
+        "C10Z" = list(geom = "text", label = "TCT Promoter", x = 59, y = 1.5),
+        ##
+        "C6X" = list(geom = "text", label = "DPE appears", x = 62, y = 1.5),
+        "C1Y" = list(geom = "text", label = "DPE", x = 62, y = 1.5),
+        "C8Y" = list(geom = "text", label = "DPE", x = 62, y = 1.5),
+        "C2Z" = list(geom = "text", label = "Two DPE variants merged", x = 60, y = 1.5),
+        "C3Z" = list(geom = "text", label = "TATA-box appears", x = 30, y = 1.2),
+        "C4Z" = list(geom = "text", label = "DPE", x = 30, y = 1.2)
+        )
+    ##
+    fill_col <- 'white'
+    rect_col <- 'black'
+
+    rect_annots <- list(
+        "C7X" = list(geom = "rect", xmin = 41, xmax = 51,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col,
+                                    linewidth = 2),
+        "C15X" = list(geom = "rect", xmin = 76, xmax = 91,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+
+        "C1Y" = list(geom = "rect", xmin = 71, xmax = 81,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+        "C11Y" = list(geom = "rect", xmin = 41, xmax = 51,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .1, col=rect_col, fill=fill_col),
 
 
+        "C14Y" = list(geom = "rect", xmin = 76, xmax = 91,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+
+        "C2Z" = list(geom = "rect", xmin = 71, xmax = 79,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+
+        "C3Z" = list(geom = "rect", xmin = 14, xmax = 22,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+
+        "C10Z" = list(geom = "rect", xmin = 41, xmax = 51,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col),
+
+        "C15Z" = list(geom = "rect", xmin = 76, xmax = 91,
+                                    ymin = -0.05, ymax = 2.0,
+                                    alpha = .01, col=rect_col, fill=fill_col)
+
+    )
+
+    ## text annotations
+    any_match <- match(clust_label, names(text_annots))
+    if(!is.na(any_match)){
+        message("Added annotation for ", clust_label)
+        pl <- pl + ggplot2::annotate(geom = text_annots[[clust_label]]$geom,
+                                    x = text_annots[[clust_label]]$x,
+                                    y = text_annots[[clust_label]]$y,
+                                    label = text_annots[[clust_label]]$label,
+                                    size = 10 + txt_size/.pt)
+    }
+
+    ## rect annotations
+    any_match <- match(clust_label, names(rect_annots))
+    if(!is.na(any_match)){
+        message("Added annotation for ", clust_label)
+        pl <- pl + ggplot2::annotate(geom = rect_annots[[clust_label]]$geom,
+            xmin = rect_annots[[clust_label]]$xmin,
+            xmax = rect_annots[[clust_label]]$xmax,
+            ymin = rect_annots[[clust_label]]$ymin,
+            ymax = rect_annots[[clust_label]]$ymax,
+            alpha = rect_annots[[clust_label]]$alpha,
+            col = rect_annots[[clust_label]]$col,
+            fill = rect_annots[[clust_label]]$fill,
+                )
+    }
+
+
+    return(pl)
+
+}
+## =============================================================================
+
+add_zf_annotation <- function(clust_label, pl, txt_size = 24){
+    ## A list of annotations we wish to add
+    ## Identify these by their clust labels, e.g., C7X, C11Y etc.
+    ##
+    text_annots <- list(
+        "C1X" = list(geom = "text", label = "W-box", x = 33, y = 0.5)
+    )
+    ##
+    fill_col <- NA
+    rect_col <- 'black'
+
+    rect_annots <- list(
+        "C1X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.9,
+            alpha = .01, col=rect_col, fill=fill_col,
+            linewidth = 2),
+
+        "C2X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.6,
+            alpha = .01, col=rect_col, fill=fill_col),
+
+        "C3X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.6,
+            alpha = .01, col=rect_col, fill=fill_col),
+
+        "C4X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.3,
+            alpha = .1, col=rect_col, fill=fill_col),
+
+        "C5X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.4,
+            alpha = .01, col=rect_col, fill=fill_col),
+
+        "C6X" = list(geom = "rect", xmin = 13, xmax = 24,
+            ymin = -0.05, ymax = 0.4,
+            alpha = .01, col=rect_col, fill=fill_col),
+
+        "C10Z" = list(geom = "rect", xmin = 91, xmax = 196,
+            ymin = -0.05, ymax = 0.4,
+            alpha = .01, col=rect_col, fill=fill_col)
+
+    )
+
+    # segment_annots <- list(
+    #     "C10Z" = list(geom = "segment", x = 91, xend=-2, y=0, yend=-10, size=2)
+    # )
+
+        ## text annotations
+        any_match <- match(clust_label, names(text_annots))
+        if(!is.na(any_match)){
+            message("Added annotation for ", clust_label)
+            pl <- pl + ggplot2::annotate(geom = text_annots[[clust_label]]$geom,
+                x = text_annots[[clust_label]]$x,
+                y = text_annots[[clust_label]]$y,
+                label = text_annots[[clust_label]]$label,
+                size = 10 + txt_size/.pt)
+        }
+
+        ## rect annotations
+        any_match <- match(clust_label, names(rect_annots))
+        if(!is.na(any_match)){
+            message("Added annotation for ", clust_label)
+            pl <- pl + ggplot2::annotate(geom = rect_annots[[clust_label]]$geom,
+                xmin = rect_annots[[clust_label]]$xmin,
+                xmax = rect_annots[[clust_label]]$xmax,
+                ymin = rect_annots[[clust_label]]$ymin,
+                ymax = rect_annots[[clust_label]]$ymax,
+                alpha = rect_annots[[clust_label]]$alpha,
+                col = rect_annots[[clust_label]]$col,
+                fill = rect_annots[[clust_label]]$fill,
+            )
+        }
+
+        # ## segment annotations
+        # any_match <- match(clust_label, names(segment_annots))
+        # if(!is.na(any_match)){
+        #     message("Added annotation for ", clust_label)
+        #     pl <- pl + ggplot2::annotate(geom = rect_annots[[clust_label]]$geom,
+        #         xmin = rect_annots[[clust_label]]$xmin,
+        #         xmax = rect_annots[[clust_label]]$xmax,
+        #         ymin = rect_annots[[clust_label]]$ymin,
+        #         ymax = rect_annots[[clust_label]]$ymax,
+        #         alpha = rect_annots[[clust_label]]$alpha,
+        #         col = rect_annots[[clust_label]]$col,
+        #         fill = rect_annots[[clust_label]]$fill,
+        #     )
+        # }
+
+
+        return(pl)
+
+}
+## =============================================================================

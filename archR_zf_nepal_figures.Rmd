@@ -1,0 +1,2038 @@
+---
+author: "Sarvesh Nikumbh"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+title: "(Improved) archR result analysis report for CTSS in Zebrafish"
+output: 
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+  editor_options:
+    chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+
+
+data_path <- file.path("experiments", "data")
+results_path <- file.path("experiments", "results")
+
+## Setup paths on disk
+data_path_on_disk <- data_path
+result_path_on_disk <- results_path
+##
+archR_org_data_path <- file.path(data_path, "zebrafish-nepal2013")
+archR_org_results_path <- file.path(results_path, "zebrafish-nepal2013/with_archR_v0.1.8")
+
+
+##
+##
+# sample_name <- params$sample_name
+# result_dir_path <- file.path(params$result_path_on_disk, params$result_dir_name)
+# reordered <- params$reordered
+# dist_method <- params$dist_method
+# linkage <- params$linkage
+# topN_val <- params$topN_val
+# regularize_choice <- params$regularize
+# iteration <- params$archR_iteration
+# iqw_order_by_median <- params$iqw_order_by_median
+
+
+
+#####
+do_plot_seq_image <- TRUE
+do_plot_arch <- TRUE
+do_IQW_TPM_plots <- TRUE
+do_bedfile_write <- TRUE
+iqw_order_by_median <- TRUE
+
+```
+
+
+
+
+# Samples at three developemental stages: 64 cells, 30% Epiboly/Dome and Prim-6
+
+This file produces additional analyses plots for zebrafish samples from Nepal et al. 2013
+
+
+
+```{r library, echo=FALSE, include=FALSE, message=FALSE}
+seed_val <- 11992288
+set.seed(seed_val)
+
+
+library(BSgenome.Drerio.UCSC.danRer10)                    # Bioconductor v1.4.2
+library(TxDb.Drerio.UCSC.danRer10.refGene)                # Bioconductor v3.4.6
+library(org.Dr.eg.db)                                     # Bioconductor v3.16.0
+library(ggeasy)                                           # CRAN v0.1.3
+
+##
+# # CAGEr  1.20
+# # note: you need to unload other packages which import data.table namespace. e.g genomation
+# if("data.table" %in% .packages())
+#     detach("package:data.table", unload=TRUE)
+# library(data.table, lib.loc="/usr/local/lib/R/backports")  # version 1.12.8   (1.13 breaks CAGEr 1.20)
+# if("CAGEr" %in% .packages())
+#     detach("package:CAGEr", unload=TRUE) 
+# library(CAGEr, lib.loc="/usr/local/lib/R/backports")   # version 1.20
+# ### end CAGEr 1.20
+##
+library(CAGEr, lib.loc = "/usr/local/lib/R/site-library") # not installed on this machine vNA
+library(readr)                                            # CRAN v2.1.3
+library(reshape2)                                         # CRAN v1.4.4
+library(ggplot2)                                          # CRAN v3.4.0
+library(forcats)                                          # CRAN v0.5.2
+library(patchwork)                                        # CRAN v1.1.2
+library(cowplot)                                          # CRAN v1.1.1
+library(wesanderson)                                      # CRAN v0.3.6
+## ^ for plotting
+## 
+## GenomeInfoDb now available in sarvesh's user library
+library(GenomeInfoDb)                                     # Bioconductor v1.34.4
+library(ChIPseeker)                                       # Bioconductor v1.34.1
+library(clusterProfiler)                                  # Bioconductor v4.6.0
+library(DT)                                               # CRAN v0.26
+
+
+
+
+
+```
+
+
+
+
+
+## Plots for sections marked TRUE are included in this report.
+
+```{r all_funcs, include=FALSE, collapse=TRUE}
+
+# source('helper-funcs.R')
+
+```
+
+
+```{r setup-variables}
+
+sample_names <- c("64_cells", "dome_30perc_epiboly", "prim6")
+
+archR_zf_best_run <- vector("list", length(sample_names))
+names(archR_zf_best_run) <- sample_names
+
+zf_2013_result <- vector("list", length(sample_names))
+names(zf_2013_result) <- sample_names
+
+zf_nepal2013_bed_info <- vector("list", length(sample_names))
+names(zf_nepal2013_bed_info) <- sample_names
+
+seqs_clusters_as_list <- vector("list", length(sample_names))
+names(seqs_clusters_as_list) <- sample_names
+
+seqs_clusters_as_list_ordered <- vector("list", length(sample_names))
+names(seqs_clusters_as_list_ordered) <- sample_names
+
+perSample_CAGEobj <- vector("list", length(sample_names))
+names(perSample_CAGEobj) <- sample_names
+
+perSample_peakAnno <- vector("list", length(sample_names))
+names(perSample_peakAnno) <- sample_names
+
+samarth_df <- vector("list", length(sample_names))
+names(samarth_df) <- sample_names
+##
+phastCons_scores <- vector("list", length(sample_names))
+names(phastCons_scores) <- sample_names
+
+##
+## lists storing plots
+## 
+## store iqw+tpm plots
+perSample_pl <- vector("list", length(sample_names)) 
+names(perSample_pl) <- sample_names
+
+## store architectures' plots
+perSample_arch <- vector("list", length(sample_names)) 
+names(perSample_arch) <- sample_names
+
+## store architectures' plots combined
+perSample_arch_combined <- vector("list", length(sample_names)) 
+names(perSample_arch_combined) <- sample_names
+
+
+perSample_arch_posStrand <- vector("list", length(sample_names)) 
+names(perSample_arch_posStrand) <- sample_names
+
+perSample_arch_negStrand <- vector("list", length(sample_names)) 
+names(perSample_arch_negStrand) <- sample_names
+
+## store result_directory path
+result_dir_path <- vector("list", length(sample_names)) 
+names(result_dir_path) <- sample_names
+
+## store go plots
+perSample_go <- vector("list", length(sample_names)) 
+names(perSample_go) <- sample_names
+
+
+## store clusters
+perSample_archR_clusts <- vector("list", length(sample_names)) 
+names(perSample_archR_clusts) <- sample_names
+
+## store overlaps info
+perCluster_overlaps_perSample <- vector("list", length(sample_names)) 
+names(perCluster_overlaps_perSample) <- sample_names
+
+
+################################################################################
+## Per section some variables need to be set. These are done here
+
+# txdb <- TxDb.Dmelanogaster.UCSC.dm6.ensGene
+## CAGEr object processing
+
+
+# read TagClusters information from corresponding RDS file for sample
+# All samples in one RDS object
+cager_obj <- file.path("/mnt/storage/cage_datasets/",
+                       "danio_rerio/danRer10/cager_objects",
+            paste0("myCAGEset_Normalised_TagC_drerio_",
+                   "danRer10_Nepal_processedMergedSamples.rds"))
+
+ok_chr_names <- paste0("chr", 1:25)
+
+for(sn in sample_names){
+    result_dir_path[[sn]] <- file.path(archR_org_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+```
+
+```{r read-result-and-TCbed}
+
+
+
+for(sn in sample_names){
+    archR_zf_best_run[[sn]] <- 
+    file.path(archR_org_results_path, 
+        paste0("archR_result_zebrafish_nepal2012_", sn,
+               "_modSelType_stability_chunkSize_1000_", 
+               "bound_1e-06_collate_FTFFF"))
+    if(file.exists(archR_zf_best_run[[sn]])){
+    zf_2013_result[[sn]] <- readRDS(file.path(archR_zf_best_run[[sn]],
+                                          "archRresult.rds"))
+    }else{
+    stop("Check if file exists. ", archR_zf_best_run[[sn]])
+    }
+    ## Bed Info -- IQW and dominant TPM values 
+    bed_fname <- file.path(archR_org_data_path, paste0("samarth_zf_TC_sample_Drerio_", sn, "_flank_500.bed"))
+    print(bed_fname)
+    
+    zf_nepal2013_bed_info[[sn]] <- read.delim(file = bed_fname,
+                          sep = "\t", header = FALSE,
+                          col.names = c("chr", "start", "end", "IQW", 
+                                        "domTPM", "strand"))
+}
+
+```
+
+
+
+```{r make-cager-obj, echo=FALSE, collapse=TRUE}
+
+
+
+## Making an ensGene txdb from scratch, because using refGene is not recommended
+txdb_ensGene_fname <- file.path(archR_org_data_path, paste0("TxDb.Drerio.UCSC.danRer10.ensGene_self.2021-06-19.sqlite"))
+if(!file.exists(txdb_ensGene_fname)){
+    txdb_ensGene_ucsc <- GenomicFeatures::makeTxDbFromUCSC(genome="danRer10",
+                                                       tablename="ensGene")
+    AnnotationDbi::saveDb(txdb_ensGene_ucsc, file= txdb_ensGene_fname)
+}else{
+    txdb_ensGene_ucsc <- AnnotationDbi::loadDb(txdb_ensGene_fname)
+}
+
+##
+
+# read TagClusters information from corresponding RDS file for sample
+# All samples in one object
+
+myCAGEobject <- readRDS(cager_obj)
+# CAGEr::cumulativeCTSSdistribution(myCAGEobject, clusters = "tagClusters")
+# CAGEr::quantilePositions(myCAGEobject, clusters = "tagClusters",
+#                    qLow = 0.1, qUp = 0.9)
+
+
+## Per sample TCs
+for(sn in sample_names){
+      message("SAMPLE: ", sn)
+      
+      stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+      gr_CAGEobj_perSample_fname <- file.path(result_dir_path[[sn]], 
+                                    paste("cagerObj", sn, "gr.rds", sep="_"))
+      cage_sn <- paste0("Drerio_", sn)
+      if(!file.exists(gr_CAGEobj_perSample_fname)){
+          cli::cli_alert_info("Preparing new GRanges obj from CAGEr object")
+     
+          gr_myCAGEobject_thisSample <- GRanges(myCAGEobject)
+          
+          myCAGEobject_thisSample <-
+          CAGEr::tagClusters(myCAGEobject, samples = cage_sn, 
+                      returnInterquantileWidth = TRUE, qLow = 0.1, qUp = 0.9)
+  
+          # ## Keeping only standard chromosomes
+          # message("Keeping only standard chromosomes")
+          # ok_idx <- which(myCAGEobject_thisSample$chr %in% ok_chr_names)
+          # myCAGEobject_thisSample <- myCAGEobject_thisSample[ok_idx,]
+          # ##
+          # ## Filter >= 1TPM
+          # message("Filtering >= 1TPM")
+          # myCAGEobject_thisSample <-
+          #     myCAGEobject_thisSample[which(myCAGEobject_thisSample[,c("tpm.dominant_ctss")] >= 1),]
+          # 
+          # gr_myCAGEobject_thisSample <-
+          #     GenomicRanges::GRanges(seqnames = myCAGEobject_thisSample[,"chr"],
+          #                            ranges = IRanges::IRanges(start=myCAGEobject_thisSample[,"dominant_ctss"], width=2),
+          #                            myCAGEobject_thisSample[,"strand"])
+  
+          seqlengths(gr_myCAGEobject_thisSample) <- seqlengths(BSgenome.Drerio.UCSC.danRer10)[names(seqlengths(gr_myCAGEobject_thisSample))]
+          
+          gr_myCAGEobject_thisSample <- trim(gr_myCAGEobject_thisSample)
+          
+          saveRDS(file = gr_CAGEobj_perSample_fname, 
+                    object = gr_myCAGEobject_thisSample)
+    }else{
+        cli::cli_alert_info("Using saved GRanges obj from CAGEr object")
+        gr_myCAGEobject_thisSample <- readRDS(gr_CAGEobj_perSample_fname)
+    }
+    perSample_CAGEobj[[sn]] <- gr_myCAGEobject_thisSample
+    perSample_peakAnno[[sn]] <- ChIPseeker::annotatePeak(gr_myCAGEobject_thisSample,
+                                         tssRegion=c(-500, 100),
+                                         TxDb=txdb_ensGene_ucsc,
+                                         annoDb="org.Dr.eg.db")
+
+}
+
+
+
+```
+
+## Order archR clusters by median IQ width {#prepare-objects}
+
+By default, the clusters are ordered by their _median_ interquantile widths. 
+One can choose to order by the _mean_ interquantile widths by setting paramater _iqw_order_by_median_ to `r FALSE`.
+
+
+### Stage 64 cells
+
+```{r prepare-clusters-64cells, collapse=TRUE}
+
+## Sample 1, 64 cells
+sn <- sample_names[1]
+itr <- 5
+use_aggl <- 'ward.D'
+use_dist <- 'cor'
+
+iter5_clusts_reord <- archR::collate_archR_result(
+  result = zf_2013_result[[sn]],
+  iter = itr, clust_method = 'hc', aggl_method = use_aggl,
+  dist_method = use_dist, regularize = FALSE, topn = 50,
+  flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE,
+  return_order = TRUE)
+
+
+## Zebrafish result final clustering already uses cor + complete linkage
+## So the result looks already good.
+
+## these are in default archR ordering
+clust_archR_ord_list <- archR::get_seqs_clust_list(
+  seqs_clust_lab = zf_2013_result[[ sn ]]$seqsClustLabels[[itr]])
+
+## these are now ordered by the hc ordering
+clust_hc_ord_list <- lapply(iter5_clusts_reord$order, function(x){
+  clust_archR_ord_list[[x]]
+})
+
+
+ordered_arch_pl <- archR::plot_arch_for_clusters(
+  seqs = zf_2013_result[[ sn ]]$rawSeqs, 
+  clust_list = clust_hc_ord_list, pos_lab = -45:150, 
+  xt_freq = 5, set_titles = FALSE, show = FALSE, bits_yax = "auto")
+
+ordered_arch_pl2 <- lapply(rev(ordered_arch_pl), function(pl){
+  pl <- pl + 
+        ggplot2::theme(axis.text = ggplot2::element_text(size = 0), 
+                       axis.text.x = ggplot2::element_text(
+                         angle = 0, vjust = 2, hjust = 0.5),
+                       axis.text.y = ggplot2::element_text(vjust = 0.5),
+                       axis.title.y = ggplot2::element_text(size = 0),
+                       axis.ticks.length = ggplot2::unit(0.00, "cm"),
+                       plot.margin = ggplot2::unit(c(-0.1,0,-0.4,-0.4), "cm"))
+})
+sam_foo <- cowplot::plot_grid(plotlist = ordered_arch_pl2, ncol = 1)
+
+use_cutk <- 5
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_", 
+                    use_dist, "_", use_aggl, "_cut", use_cutk))
+
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname, use_cutk = use_cutk,
+              clusts = iter5_clusts_reord, use_ht = 30, plot_png = FALSE,
+              lwd = 0.4, repel = TRUE, show_labels = TRUE, labels_track_height = 0.25,
+              rect = TRUE, rect_fill = TRUE,
+              color_labels_by_k = TRUE)
+
+# sam_foo2
+
+
+###
+temp_clusts <- cutree(iter5_clusts_reord, k = use_cutk)
+names(temp_clusts) <- NULL
+## Make further few clusters
+nCl <- length(unique(temp_clusts))
+
+temp_clusts[c(14,28,30,31)] <- nCl + 1
+
+
+existing_clust <- sort(unique(temp_clusts))
+for(i in seq_along(existing_clust)){
+    idx <- which(temp_clusts == existing_clust[i])
+    temp_clusts[idx] <- i
+}
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname2 <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters_final"))
+
+## Also need to show alongside, how the final clusters' seqlogos look
+clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[sn]]$seqsClustLabels[[itr]]))
+##
+## Also use the IQW ordered cluster names in these plots
+##
+
+cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    median(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+cluster_means_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    mean(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+
+if(iqw_order_by_median){
+    ascending_order_IQW <- sort(cluster_medians_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}else{
+    ascending_order_IQW <- sort(cluster_means_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}
+##
+seqs_clusters_as_list_ordered[[sn]] <- 
+                      lapply(ascending_order_IQW$ix,
+                              function(x){
+                                  seqs_clusters_as_list[[sn]][[x]]
+                              })
+
+##
+use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
+               use_cutk = use_cutk,#length(unique(temp_clusts)), 
+               clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+               label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+               k_colors = use_color, 
+               clust_assignment = clust_list[ascending_order_IQW$ix], 
+               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               rawSeqs = zf_2013_result[[sn]]$rawSeqs,
+               palette = FALSE, plot_png = FALSE)
+
+
+
+# use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+# sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2,
+#                use_cutk = use_cutk,
+#                #length(unique(temp_clusts)),
+#                clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+#                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+#                k_colors = use_color, plot_png = FALSE,
+#                palette = FALSE)
+
+##
+
+
+# clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+# seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[sn]]$seqsClustLabels[[itr]]))
+###
+
+## Write W-box motif sub sequences to disk
+wbox_seq <- zf_2013_result[[sn]]$rawSeqs[seqs_clusters_as_list_ordered[[sn]][[3]]]
+wbox_subseq <- Biostrings::subseq(wbox_seq, start = 13, end = 21)
+Biostrings::writeXStringSet(x = wbox_subseq, 
+                filepath = file.path(result_dir_path[[sn]], "Wbox_subsequences.fa"))
+
+
+perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
+
+
+```
+
+### Stage dome_30%_Epiboly
+
+```{r prepare-clusters-dome30epiboly, collapse=TRUE}
+
+## Sample 2, dome_30perc_epiboly needs final clustering
+sn <- sample_names[2]
+itr <- 5
+use_aggl <- 'ward.D'
+use_dist <- 'cor'
+
+
+iter5_clusts_reord <- archR::collate_archR_result(
+  result = zf_2013_result[[sn]],
+  iter = itr, clust_method = 'hc', aggl_method = use_aggl,
+  dist_method = use_dist, regularize = TRUE, topn = 50,
+  flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE,
+  return_order = TRUE)
+
+
+## Zebrafish result final clustering already uses cor + complete linkage
+## So the result looks already good.
+
+## these are in default archR ordering
+clust_archR_ord_list <- archR::get_seqs_clust_list(
+  seqs_clust_lab = zf_2013_result[[ sn ]]$seqsClustLabels[[itr]])
+
+## these are now ordered by the hc ordering
+clust_hc_ord_list <- lapply(iter5_clusts_reord$order, function(x){
+  clust_archR_ord_list[[x]]
+})
+
+
+ordered_arch_pl <- archR::plot_arch_for_clusters(
+  seqs = zf_2013_result[[ sn ]]$rawSeqs, 
+  clust_list = clust_hc_ord_list, pos_lab = -45:150, 
+  xt_freq = 5, set_titles = FALSE, show = FALSE, bits_yax = "auto")
+
+ordered_arch_pl2 <- lapply(rev(ordered_arch_pl), function(pl){
+  pl <- pl + 
+        ggplot2::theme(axis.text = ggplot2::element_text(size = 0), 
+                       axis.text.x = ggplot2::element_text(
+                         angle = 0, vjust = 2, hjust = 0.5),
+                       axis.text.y = ggplot2::element_text(vjust = 0.5),
+                       axis.title.y = ggplot2::element_text(size = 0),
+                       axis.ticks.length = ggplot2::unit(0.00, "cm"),
+                       plot.margin = ggplot2::unit(c(-0.1,0,-0.4,-0.4), "cm"))
+})
+sam_foo <- cowplot::plot_grid(plotlist = ordered_arch_pl2, ncol = 1)
+
+use_cutk <- 12
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_", 
+                    use_dist, "_", use_aggl, "_cut", use_cutk))
+
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname, use_cutk = use_cutk,
+              clusts = iter5_clusts_reord, use_ht = 30, plot_png = FALSE,
+              lwd = 0.4, repel = TRUE, show_labels = TRUE, labels_track_height = 0.25,
+              rect = TRUE, rect_fill = TRUE,
+              color_labels_by_k = TRUE)
+
+# sam_foo2
+
+
+###
+temp_clusts <- cutree(iter5_clusts_reord, k = use_cutk)
+names(temp_clusts) <- NULL
+## Make further few clusters
+nCl <- length(unique(temp_clusts))
+
+temp_clusts[c(29)] <- temp_clusts[c(22)]
+
+
+existing_clust <- sort(unique(temp_clusts))
+for(i in seq_along(existing_clust)){
+    idx <- which(temp_clusts == existing_clust[i])
+    temp_clusts[idx] <- i
+}
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname2 <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters_final"))
+
+## Also need to show alongside, how the final clusters' seqlogos look
+clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[sn]]$seqsClustLabels[[itr]]))
+##
+## Also use the IQW ordered cluster names in these plots
+
+cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    median(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+cluster_means_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    mean(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+
+if(iqw_order_by_median){
+    ascending_order_IQW <- sort(cluster_medians_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}else{
+    ascending_order_IQW <- sort(cluster_means_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}
+##
+seqs_clusters_as_list_ordered[[sn]] <- 
+                      lapply(ascending_order_IQW$ix,
+                              function(x){
+                                  seqs_clusters_as_list[[sn]][[x]]
+                              })
+
+##
+use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
+               use_cutk = use_cutk,#length(unique(temp_clusts)), 
+               clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+               label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+               k_colors = use_color, 
+               clust_assignment = clust_list[ascending_order_IQW$ix], 
+               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               rawSeqs = zf_2013_result[[sn]]$rawSeqs,
+               palette = FALSE, plot_png = FALSE)
+
+
+
+
+
+perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
+
+
+```
+
+
+
+### Stage prim6
+
+```{r prepare-clusters-prim6, collapse=TRUE}
+
+sn <- sample_names[3]
+itr <- 5
+use_aggl <- 'ward.D' 
+use_dist <- 'cor'
+
+
+iter5_clusts_reord <- archR::collate_archR_result(
+  result = zf_2013_result[[sn]], 
+  iter = itr, clust_method = 'hc', aggl_method = use_aggl, 
+  dist_method = use_dist, regularize = FALSE, topn = 50, 
+  flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE, 
+  return_order = TRUE)
+
+clust_archR_ord_list <- archR::get_seqs_clust_list(
+  seqs_clust_lab = zf_2013_result[[ sn ]]$seqsClustLabels[[itr]])
+
+## these are now ordered by the hc ordering
+clust_hc_ord_list <- lapply(iter5_clusts_reord$order, function(x){
+  clust_archR_ord_list[[x]]
+})
+
+ordered_arch_pl <- archR::plot_arch_for_clusters(
+  seqs = zf_2013_result[[ sn ]]$rawSeqs, 
+  clust_list = clust_hc_ord_list, pos_lab = -45:150, 
+  xt_freq = 5, set_titles = FALSE, show = FALSE, bits_yax = "auto")
+
+ordered_arch_pl2 <- lapply(rev(ordered_arch_pl), function(pl){
+  pl <- pl + 
+        ggplot2::theme(axis.text = ggplot2::element_text(size = 0), 
+                       axis.text.x = ggplot2::element_text(
+                         angle = 0, vjust = 2, hjust = 0.5),
+                       axis.text.y = ggplot2::element_text(vjust = 0.5),
+                       axis.title.y = ggplot2::element_text(size = 0),
+                       axis.ticks.length = ggplot2::unit(0.00, "cm"),
+                       plot.margin = ggplot2::unit(c(-0.1,0,-0.4,-0.4), "cm"))
+})
+sam_foo <- cowplot::plot_grid(plotlist = ordered_arch_pl2, ncol = 1)
+
+use_cutk <- 12
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_", 
+                    use_dist, "_", use_aggl, "_cut", use_cutk))
+
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname, use_cutk = use_cutk,
+              clusts = iter5_clusts_reord, use_ht = 30, plot_png = FALSE,
+              lwd = 0.4, repel = TRUE, show_labels = TRUE, labels_track_height = 0.25,
+              rect = TRUE, rect_fill = TRUE,
+              color_labels_by_k = TRUE)
+
+# sam_foo2
+
+
+###
+temp_clusts <- cutree(iter5_clusts_reord, k = use_cutk)
+names(temp_clusts) <- NULL
+## Make further few clusters
+nCl <- length(unique(temp_clusts))
+
+temp_clusts[c(21,2,29)] <- temp_clusts[c(19)]
+temp_clusts[c(8)] <- temp_clusts[c(11)]
+
+existing_clust <- sort(unique(temp_clusts))
+for(i in seq_along(existing_clust)){
+    idx <- which(temp_clusts == existing_clust[i])
+    temp_clusts[idx] <- i
+}
+
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname2 <- file.path(result_dir_path[[sn]], paste0(sn, "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters_final"))
+
+## Also need to show alongside, how the final clusters' seqlogos look
+clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+seqs_clusters_as_list[[sn]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(zf_2013_result[[sn]]$seqsClustLabels[[itr]]))
+##
+## Also use the IQW ordered cluster names in these plots
+
+cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    median(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+cluster_means_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    mean(zf_nepal2013_bed_info[[sn]]$IQW[x])
+}))
+
+if(iqw_order_by_median){
+    ascending_order_IQW <- sort(cluster_medians_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}else{
+    ascending_order_IQW <- sort(cluster_means_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}
+##
+seqs_clusters_as_list_ordered[[sn]] <- 
+                      lapply(ascending_order_IQW$ix,
+                              function(x){
+                                  seqs_clusters_as_list[[sn]][[x]]
+                              })
+
+##
+use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
+               use_cutk = use_cutk,#length(unique(temp_clusts)), 
+               clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+               label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+               k_colors = use_color, 
+               clust_assignment = clust_list[ascending_order_IQW$ix], 
+               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               rawSeqs = zf_2013_result[[sn]]$rawSeqs,
+               palette = FALSE, plot_png = FALSE)
+
+
+###
+
+
+
+perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
+
+
+
+```
+
+```{r clustering-carousels}
+
+
+
+## Display as carousel
+fnames <- unlist(lapply(sample_names, function(x){
+  respath <- file.path(archR_org_results_path, paste0(x, "_results"))
+  flist <- list.files(respath, pattern = paste0(x, "_dend_arch_list*"))
+  last3 <- unlist(lapply(flist, function(y){
+    substr(y, nchar(y)-2, nchar(y))
+    }))
+  idx <- which(last3 == "png")
+  # stopifnot(length(flist[idx]) == 1)
+  file.path(respath, flist[idx])
+  }))
+
+
+
+cP1 <- htmlwidgets::JS("function(slick,index) {
+                        return '<a>'+(index+1)+'</a>';
+                   }")
+
+slick_clustering_imgs <- slickR::slickR(obj = fnames, slideId = "clusterings", 
+  slideType = "img", width="100%", height = "800px") + 
+  slickR::settings(initialSlide = 0, 
+          infinite = FALSE,
+          focusOnSelect = TRUE,
+          dots = TRUE,
+          customPaging = cP1)
+    
+
+slick_clustering_imgs
+
+
+
+```
+
+
+```{r make-df-from-bed}
+
+for(sn in sample_names) {
+    clust_lens <- unlist(lapply(seqs_clusters_as_list_ordered[[sn]], length))
+    message("Ordered list lengths: ", paste(clust_lens, collapse = " "))
+    message("Original list lengths:", 
+      paste(unlist(lapply(seqs_clusters_as_list[[sn]], length)), collapse = " "))
+  
+  
+    ##
+    clust_lab <- rep("0", length(zf_2013_result[[sn]]$rawSeqs))
+    clust_names <- sort(as.character(1:length(seqs_clusters_as_list_ordered[[sn]])))
+    for(i in seq_along(seqs_clusters_as_list_ordered[[sn]])){
+        clust_lab[seqs_clusters_as_list_ordered[[sn]][[i]] ] <- clust_names[i]
+    }
+  
+  
+    ### Get DF ob BED information
+    samarth_df[[sn]] <- data.frame(chr = zf_nepal2013_bed_info[[sn]]$chr, 
+                             start = zf_nepal2013_bed_info[[sn]]$start,
+                             end = zf_nepal2013_bed_info[[sn]]$end, 
+                             strand = zf_nepal2013_bed_info[[sn]]$strand,
+                             IQW = zf_nepal2013_bed_info[[sn]]$IQW,
+                             domTPM = zf_nepal2013_bed_info[[sn]]$domTPM,
+                             clust_ID = clust_lab)
+}
+
+```
+
+
+
+## Cluster-wise BED files {#per-cluster-bedfiles}
+
+
+```{r write-bed-files, collapse=TRUE, results='asis', comment='', message=FALSE, eval=TRUE}
+
+if(do_bedfile_write){
+    message("Task: Write cluster-wise BED files to disk")
+    for(sn in sample_names){
+        stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+        ##
+        bedFilesPath <- file.path(result_dir_path[[sn]], "Cluster_BED_tracks")
+        stopifnot(check_and_create_dir(bedFilesPath))
+        
+        message("Writing cluster BED track files at:", bedFilesPath)
+        ##
+        #### Write bed to disk -- each cluster in a separate bed file
+        cat(paste0("\n\n### Individual cluster track BED files [", sn, "]\n\n"))
+        for(lo in seq_along(seqs_clusters_as_list_ordered[[sn]])){
+            ##
+            bedFilename <- file.path(bedFilesPath,
+                                  paste0("zf_nepal2013_TC_sample_", sn, 
+                                  "_cluster", lo, ".bed"))
+            # print(bedFilename)
+            seq_ids <- seqs_clusters_as_list_ordered[[sn]][[lo]]
+            limit_df <- samarth_df[[sn]][seq_ids,]
+            track.name <- paste0(sn, "_danRer10_", "clust", lo)
+            write_as_track_bed(limit_df, seq_ids, track_name = track.name, 
+                               bedFilename = bedFilename)
+            dload_text <- xfun::embed_file(path = bedFilename,  
+                        text = paste("Download coordinates for cluster", lo, " as browser track"))
+            cat(paste0("\n<", dload_text$name," href=\"", dload_text$attribs$href, "\" download=\"", dload_text$attribs$download, "\">", dload_text$children[[1]][1],
+                "</a>\n"))
+        }
+        #####
+        message("Preparing strand-separated files")
+        ## Strand-wise separate files per cluster
+        cat(paste0("\n\n### Strand-separated individual cluster track BED files[", sn, "]\n\n"))
+        for(lo in seq_along(seqs_clusters_as_list_ordered[[sn]])){
+            ## plus strand
+            bedFilename_plus <- file.path(bedFilesPath,
+                                paste0("zf_nepal2013_TC_sample_", sn, 
+                                  "_cluster", lo, "_plus_strand.bed"))
+            ##
+            chosen_idx_plus_strand <- get_strand_specific_indices(df = samarth_df[[sn]],
+                                seq_ids_in_clust = seqs_clusters_as_list_ordered[[sn]][[lo]],
+                                strand_val = "+")
+            ##
+            if(length(chosen_idx_plus_strand) < 1){
+              cat(paste0("<a href= >Empty",   "</a>"))
+            }else{
+            ##
+              limit_df <- samarth_df[[sn]][chosen_idx_plus_strand,]
+              track.name <- paste0(sn, "_danRer10_", "clust", lo, "_plus_strand")
+              write_as_track_bed(limit_df, chosen_idx_plus_strand, track_name = track.name, 
+                                 bedFilename = bedFilename_plus)
+              dload_text <- xfun::embed_file(bedFilename_plus, 
+                          text = paste("Download coordinates for cluster", 
+                                       lo, "(+ strand) as browser track"))
+              cat(paste0("\n<", dload_text$name," href=\"", dload_text$attribs$href, "\" download=\"", dload_text$attribs$download, "\">", dload_text$children[[1]][1],
+                  "</a>,  "))
+            }
+            ## minus strand
+            bedFilename_minus <- file.path(bedFilesPath,
+                                     paste0("zf_nepal2013_TC_sample_",
+                                            sn, "_cluster",
+                                            lo, "_minus_strand.bed"))
+            ##
+            ##
+            chosen_idx_minus_strand <- get_strand_specific_indices(df = samarth_df[[sn]],
+                                seq_ids_in_clust = seqs_clusters_as_list_ordered[[sn]][[lo]],
+                                strand_val = "-")
+            ##
+            if(length(chosen_idx_minus_strand) < 1){
+              cat(paste0("<a href= >Empty",   "</a>\n"))
+            }else{
+              limit_df <- samarth_df[[sn]][chosen_idx_minus_strand,]
+              track.name <- paste0(sn, "_danRer10_", "clust", lo, "_plus_strand")
+              write_as_track_bed(limit_df, chosen_idx_minus_strand, track_name = track.name, 
+                                 bedFilename = bedFilename_minus)
+              dload_text <- xfun::embed_file(bedFilename_minus, 
+                    text = paste("Download coordinates for cluster", 
+                                       lo, "(- strand) as browser track"))
+              cat(paste0("<", dload_text$name," href=\"", dload_text$attribs$href, "\" download=\"", dload_text$attribs$download, "\">", dload_text$children[[1]][1], "</a>\n"))
+            }
+            ##
+        }
+    }
+    ##
+    dload_all <- xfun::embed_dir(bedFilesPath, 
+              text = paste("Download all clusters as separate browser track files (zip)"))
+        cat(paste0("### All cluster track files (one zipped folder of all BED files)\n\n"))
+        cat(paste0("\n<", dload_all$name," href=\"", dload_all$attribs$href, "\" download=\"", dload_all$attribs$download, "\">", dload_all$children[[1]][1],
+                "</a>\n"))
+    ##
+}else{
+    message("do_bedfile_write is FALSE")
+}
+
+```
+
+
+
+## IQW-TPM-PhastCons plots {#iqw-tpm-plots}
+
+
+
+```{r iqw-tpm-plots, warning=FALSE, message=FALSE}
+
+####
+if(do_IQW_TPM_plots){
+    message("Task: Producing IQW_TPM_PhastCons scores combined plot")
+    for(sn in sample_names){
+        stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+        pl_iqw <- get_iqw_ord_plot(iqw = TRUE, y_axis_text = TRUE, 
+                    samarth_df = samarth_df[[sn]], 
+                    seqs_clust = seqs_clusters_as_list_ordered[[sn]])
+        pl_iqw <- pl_iqw + ggeasy::easy_all_text_size(size=18) + 
+                  NULL +
+                  ggeasy::easy_y_axis_labels_size(size=18) +
+                  ggeasy::easy_x_axis_labels_size(size=18) +
+                  NULL
+        ##
+        pl_tpm <- get_iqw_ord_plot(tpm = TRUE, y_axis_text = FALSE, 
+                    samarth_df = samarth_df[[sn]], 
+                    seqs_clust = seqs_clusters_as_list_ordered[[sn]])
+        pl_tpm <- pl_tpm + ggeasy::easy_all_text_size(size=18) + 
+                  NULL +
+                  # ggeasy::easy_y_axis_labels_size(size=18) +
+                  ggeasy::easy_x_axis_labels_size(size=18) +
+                  NULL
+        ##
+        ## IQW ordered plots
+        iqw_tpm_ord_pls <- pl_iqw | pl_tpm
+        # iqw_tpm_phast_ord_pls <- pl_iqw | pl_tpm | pl_phast
+        perSample_pl[[sn]] <- iqw_tpm_ord_pls #iqw_tpm_phast_ord_pls
+        
+        # title_str <- paste0("Sample_", sn, "_IQW_TPM_phast_plot")
+        title_str <- paste0("Sample_", sn, "_IQW_TPM_plot")
+        pl_w_title <- perSample_pl[[sn]] + plot_annotation(title = title_str)
+        cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+                paste0(title_str, ".pdf")),
+                plot = pl_w_title,
+                base_height = 12, base_width = 6
+                )
+        # cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+        #         paste0(title_str, ".png")),
+        #         plot = pl_w_title,
+        #         base_height = 17, base_width = 8
+        #         )
+        # ggsave(filename = file.path(result_dir_path[[sn]],
+        #        paste0(title_str, ".pdf")),
+        #        plot = pl_w_title,
+        #        width = 10, height = 7)
+        # ggsave(filename = file.path(result_dir_path[[sn]],
+        #        paste0(title_str, ".png")),
+        #        plot = pl_w_title, device = "png", dpi = 300,
+        #        width = 10, height = 7)
+        # print(pl_w_title)
+        
+    }
+    
+}else{
+    message("do_iqw_tpm_plot is FALSE")
+}
+
+
+```
+
+
+## Sequence logos of cluster architectures {#arch-seqlogos}
+
+Sequence logos of clusters ordered by their median interquantile width (ascending order). These are included as part of the combined panels. See [64 cells stage](#tripanel1), [dome 30% epiboly stage](#tripanel2) and [prim6 stage](#tripanel3).
+
+```{r seqlogos, collapse=TRUE, cache=TRUE}
+
+#fig.width=11, fig.height=10, out.width="1200px", out.height="800px",
+
+##
+if(do_plot_arch){
+    use_ht <- list(15, 30, 20)
+    names(use_ht) <- sample_names
+    for(sn in sample_names){
+        stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+        ##
+        message("Generating architectures for clusters of sequences...")
+        fname <- file.path(result_dir_path[[sn]],
+                           paste0("Architectures_0-max.pdf"))
+        iter5_zf_arch_list <- lapply(seq_along(perSample_archR_clusts[[sn]]), 
+          function(y){
+          x <- perSample_archR_clusts[[sn]][[y]]
+          pl <- archR::plot_ggseqlogo_of_seqs(as.character(zf_2013_result[[sn]]$rawSeqs[x]), 
+            pos_lab = -45:150, bits_yax = "auto", title = NULL)
+          pl + theme(axis.text = element_text(size=10), 
+                     # axis.text.x = element_text(angle=0, vjust = 2, hjust = 0.5),
+                     # axis.text.x = element_text(angle=90, vjust = 0, hjust = 0),
+                     axis.text.y = element_text(vjust = 0.5),
+                     axis.title.y = element_text(size=10),
+                     axis.ticks.length = unit(0.04, "cm"),
+                     plot.margin = unit(c(0,0.1,-0.4,0.1), "cm")) +
+            ggplot2::scale_y_continuous(sec.axis = dup_axis(name = paste0("C",y), labels = NULL))
+          # pl + theme(plot.margin = unit(c(0,0.2,-0.5,0.1), "cm"))
+          # pl + theme(plot.margin = unit(c(0,0,-0.3,0), "cm"))
+          
+        })
+        # print(length(iter5_dm_arch_list))
+        
+        r1c1 <- cowplot::plot_grid(plotlist = iter5_zf_arch_list, ncol = 1)
+        # cowplot::save_plot(fname, plot = r1c1, limitsize = FALSE, base_width = 30,
+        #             nrow = length(seqs_clusters_as_list_ordered[[sn]]))
+        cowplot::ggsave2(fname, plot= r1c1, width=25, height=use_ht[[sn]], units="cm",
+              dpi = 600, limitsize = FALSE)
+        
+        ## save PNGs
+        # for(p in 1:length(iter5_zf_arch_list)){
+        #     this_result_dir_path <- file.path(result_dir_path[[sn]], "arch_png")
+        #     stopifnot(check_and_create_dir(this_result_dir_path))
+        #     fname <- file.path(this_result_dir_path, 
+        #             paste0("Architecture_clust", p, "_0-max.png"))
+        #     cowplot::ggsave2(fname, plot= iter5_zf_arch_list[[p]], 
+        #       width=25, height=3, units="cm", dpi = 300)
+        # }
+        # r1c1
+        perSample_arch_combined[[sn]] <- r1c1
+        perSample_arch[[sn]] <- iter5_zf_arch_list
+        
+        if(file.exists(fname)){
+            knitr::include_graphics(fname)
+        }
+    }
+}else{
+    message("do_plot_arch is FALSE")
+}
+##
+
+
+
+```
+
+
+## Per sample list of ENTREZ IDs per cluster
+
+```{r per-sample-entrezIDs-per-cluster}
+
+perSample_entrezList <- lapply(seq_along(perSample_archR_clusts), function(x){
+            as_df_entrez_id <- as.data.frame(perSample_peakAnno[[x]])$ENTREZID
+            sam <- lapply(perSample_archR_clusts[[x]], function(y){
+              temp <- as_df_entrez_id[y]
+              temp[which(!is.na(temp))]
+            })
+            names(sam) <- paste0("C", seq_along(sam))
+            sam
+        })
+names(perSample_entrezList) <- names(perSample_archR_clusts)
+
+```
+
+## Per cluster gene names [ZF Stage 64 cells] {#tripanel1}
+
+```{r per-clust-genes1, warning=FALSE}
+
+
+sn <- sample_names[1]
+
+peakAnno_df <- as.data.frame(perSample_peakAnno[[sn]])
+## peakAnno_df here doesn't have columns tpm.dominant_ctss
+peakAnno_df$tpm.dominant_ctss <- zf_nepal2013_bed_info[[sn]]$domTPM
+
+unique_genes <- unique(peakAnno_df$SYMBOL)
+sumTPM_across_TC_per_gene <- lapply(unique_genes, function(x){
+    sum(peakAnno_df$tpm.dominant_ctss[which(peakAnno_df$SYMBOL == x)])
+})
+names(sumTPM_across_TC_per_gene) <- unique_genes 
+
+genes1 <- lapply(1:length(perSample_archR_clusts[[sn]]), function(x){
+      ##
+      all_genenames <-
+        peakAnno_df[unlist(perSample_archR_clusts[[sn]][x]), c("GENENAME", "ENTREZID", "geneId", "SYMBOL", "annotation", "width", "tpm.dominant_ctss")]
+      ## To sort by motif scores, get motif scores first
+      motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
+      ##
+      ##
+      anno_terms1 <- all_genenames$annotation
+      anno_terms_splits <- strsplit(anno_terms1, " ")
+      anno_terms <- unlist(lapply(anno_terms_splits, function(x){
+            if(is.na(x[1])){ "NA";
+            }else if(grepl("Intron", x[1]) || grepl("Exon", x[1])){
+                paste0(x[1], " (", paste(x[3:6], collapse = " "))
+            }else if(grepl("Promoter", x[1])){
+                x[1]
+            }else{ paste(x[1], x[2]) }
+      }))
+      ##
+      sorted <- sort(motif_scores, index.return=TRUE,
+                      decreasing = TRUE)
+      ##
+      ##
+      ## To sort alphabetically by Gene Symbol
+      naStr <- unlist(lapply(all_genenames$SYMBOL, function(x){
+              if(is.na(x)){
+                  "NA"
+              }else{
+                  x
+              }
+            }))
+      all_genenames$SYMBOL <- naStr
+      sorted <- sort(all_genenames$SYMBOL, index.return=TRUE)
+      
+      sam2 <- unlist(lapply(all_genenames$SYMBOL, function(x) {
+          if(x != "NA"){
+            sumTPM_across_TC_per_gene[[x]]
+          }else{
+            NA
+          }
+        }))
+      ##
+      # Displays as datatable which is sortable, searchable
+        print_df <- data.frame("Symbol" = all_genenames$SYMBOL[sorted$ix],
+                         "Weblink" = 
+            paste0('<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+                all_genenames$geneId[sorted$ix], '" target="_blank">',
+                all_genenames$GENENAME[sorted$ix], 
+          '</a> '),
+            "Annot" = anno_terms[sorted$ix],
+            "domTPM" = format(round(all_genenames$tpm.dominant_ctss[sorted$ix], 3), nsmall=3),
+            "%%.domTPM" = format(round(100*(all_genenames$tpm.dominant_ctss[sorted$ix]/sam2[sorted$ix]), 2), nsmall=2),
+            "Match.score"= form_str(motif_scores[sorted$ix])
+            )
+        colnames(print_df)[5] <- "%domTPM"
+        return(print_df)
+        # Displays as general html text
+      paste0('--<span style="color:red">', all_genenames$SYMBOL[sorted$ix], '</span> ',
+        '<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+              all_genenames$geneId[sorted$ix], '" target="_blank">',
+              all_genenames$GENENAME[sorted$ix], 
+        '</a> ',
+        '<span style="color:green">', form_str(sorted$x), '</span> ',
+       collapse=" <br/> ")
+    })
+
+genes <- lapply(genes1, function(x){
+    DT::datatable(x, escape = c(1), rownames = FALSE, width = 600, height = 1200, 
+                  options = list(paging= FALSE), 
+                  caption = paste0("TSS info [", nrow(x), " entries] sorted by the gene symbol"))
+})
+
+
+```
+
+
+## Per cluster gene names [ZF Stage dome 30% epiboly] {#tripanel2}
+
+```{r per-clust-genes2, warning=FALSE}
+
+
+sn <- sample_names[2]
+
+peakAnno_df <- as.data.frame(perSample_peakAnno[[sn]])
+## peakAnno_df here doesn't have columns tpm.dominant_ctss
+peakAnno_df$tpm.dominant_ctss <- zf_nepal2013_bed_info[[sn]]$domTPM
+
+unique_genes <- unique(peakAnno_df$SYMBOL)
+sumTPM_across_TC_per_gene <- lapply(unique_genes, function(x){
+    sum(peakAnno_df$tpm.dominant_ctss[which(peakAnno_df$SYMBOL == x)])
+})
+names(sumTPM_across_TC_per_gene) <- unique_genes 
+
+
+genes1 <- lapply(seq_along(perSample_archR_clusts[[sn]]), function(x){
+      ##
+      all_genenames <-
+        peakAnno_df[unlist(perSample_archR_clusts[[sn]][x]), c("GENENAME", "ENTREZID", "geneId", "SYMBOL", "annotation", "width", "tpm.dominant_ctss")]
+      ## To sort by motif scores, get motif scores first
+      motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
+      ##
+      ##
+      anno_terms1 <- all_genenames$annotation
+      anno_terms_splits <- strsplit(anno_terms1, " ")
+      anno_terms <- unlist(lapply(anno_terms_splits, function(x){
+            if(is.na(x[1])){ "NA";
+            }else if(grepl("Intron", x[1]) || grepl("Exon", x[1])){
+                paste0(x[1], " (", paste(x[3:6], collapse = " "))
+            }else if(grepl("Promoter", x[1])){
+                x[1]
+            }else{ paste(x[1], x[2]) }
+      }))
+      ##
+      sorted <- sort(motif_scores, index.return=TRUE,
+                      decreasing = TRUE)
+      
+      ##
+      ## To sort alphabetically by Gene Symbol
+      naStr <- unlist(lapply(all_genenames$SYMBOL, function(x){
+              if(is.na(x)){
+                  "NA"
+              }else{
+                  x
+              }
+            }))
+      all_genenames$SYMBOL <- naStr
+      sorted <- sort(all_genenames$SYMBOL, index.return=TRUE)
+      
+      sam2 <- unlist(lapply(all_genenames$SYMBOL, function(x) {
+          if(x != "NA"){
+            sumTPM_across_TC_per_gene[[x]]
+          }else{
+            NA
+          }
+        }))
+      
+      ##
+      # Displays as datatable which is sortable, searchable
+        print_df <- data.frame("Symbol" = all_genenames$SYMBOL[sorted$ix],
+                         "Weblink" = 
+            paste0('<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+                all_genenames$geneId[sorted$ix], '" target="_blank">',
+                all_genenames$GENENAME[sorted$ix], 
+          '</a> '),
+            "Annot" = anno_terms[sorted$ix],
+            "domTPM" = format(round(all_genenames$tpm.dominant_ctss[sorted$ix], 3), nsmall=3),
+            "%%.domTPM" = format(round(100*(all_genenames$tpm.dominant_ctss[sorted$ix]/sam2[sorted$ix]), 2), nsmall=2),
+            "Match.score"= form_str(motif_scores[sorted$ix])
+            )
+        colnames(print_df)[5] <- "%domTPM"
+        return(print_df)
+        # Displays as general html text
+      paste0('--<span style="color:red">', all_genenames$SYMBOL[sorted$ix], '</span> ',
+        '<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+              all_genenames$geneId[sorted$ix], '" target="_blank">',
+              all_genenames$GENENAME[sorted$ix], 
+        '</a> ',
+        '<span style="color:green">', form_str(sorted$x), '</span> ',
+       collapse=" <br/> ")
+    })
+
+genes <- lapply(genes1, function(x){
+    DT::datatable(x, escape = c(1), rownames = FALSE, width = 600, height = 1200, 
+                  options = list(paging= FALSE), 
+                  caption = paste0("TSS info [", nrow(x), " entries] sorted by the gene symbol"))
+})
+
+
+```
+
+
+## Per cluster gene names [ZF Stage prim6] {#tripanel3}
+
+
+```{r per-clust-genes3, warning=FALSE}
+
+
+sn <- sample_names[3]
+
+peakAnno_df <- as.data.frame(perSample_peakAnno[[sn]])
+## peakAnno_df here doesn't have columns tpm.dominant_ctss
+peakAnno_df$tpm.dominant_ctss <- zf_nepal2013_bed_info[[sn]]$domTPM
+
+unique_genes <- unique(peakAnno_df$SYMBOL)
+sumTPM_across_TC_per_gene <- lapply(unique_genes, function(x){
+    sum(peakAnno_df$tpm.dominant_ctss[which(peakAnno_df$SYMBOL == x)])
+})
+names(sumTPM_across_TC_per_gene) <- unique_genes 
+
+
+genes1 <- lapply(1:length(perSample_archR_clusts[[sn]]), function(x){
+      ##
+      all_genenames <-
+        peakAnno_df[unlist(perSample_archR_clusts[[sn]][x]), c("GENENAME", "ENTREZID", "geneId", "SYMBOL", "annotation", "width", "tpm.dominant_ctss")]
+      ## To sort by motif scores, get motif scores first
+      motif_scores <- suppressMessages(get_motif_scores(zf_2013_result, perSample_archR_clusts, sn, clust_id = x))
+      ##
+      ##
+      anno_terms1 <- all_genenames$annotation
+      anno_terms_splits <- strsplit(anno_terms1, " ")
+      anno_terms <- unlist(lapply(anno_terms_splits, function(x){
+            if(is.na(x[1])){ "NA";
+            }else if(grepl("Intron", x[1]) || grepl("Exon", x[1])){
+                paste0(x[1], " (", paste(x[3:6], collapse = " "))
+            }else if(grepl("Promoter", x[1])){
+                x[1]
+            }else{ paste(x[1], x[2]) }
+      }))
+      ##
+      sorted <- sort(motif_scores, index.return=TRUE,
+                      decreasing = TRUE)
+      
+      ##
+      ## To sort alphabetically by Gene Symbol
+      naStr <- unlist(lapply(all_genenames$SYMBOL, function(x){
+              if(is.na(x)){
+                  "NA"
+              }else{
+                  x
+              }
+            }))
+      all_genenames$SYMBOL <- naStr
+      sorted <- sort(all_genenames$SYMBOL, index.return=TRUE)
+      
+      sam2 <- unlist(lapply(all_genenames$SYMBOL, function(x) {
+          if(x != "NA"){
+            sumTPM_across_TC_per_gene[[x]]
+          }else{
+            NA
+          }
+        }))
+      
+      ##
+      # Displays as datatable which is sortable, searchable
+        print_df <- data.frame("Symbol" = all_genenames$SYMBOL[sorted$ix],
+                         "Weblink" = 
+            paste0('<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+                all_genenames$geneId[sorted$ix], '" target="_blank">',
+                all_genenames$GENENAME[sorted$ix], 
+          '</a> '),
+            "Annot" = anno_terms[sorted$ix],
+            "domTPM" = format(round(all_genenames$tpm.dominant_ctss[sorted$ix], 3), nsmall=3),
+            "%%.domTPM" = format(round(100*(all_genenames$tpm.dominant_ctss[sorted$ix]/sam2[sorted$ix]), 2), nsmall=2),
+            "Match.score"= form_str(motif_scores[sorted$ix])
+            )
+        colnames(print_df)[5] <- "%domTPM"
+        return(print_df)
+        # Displays as general html text
+      paste0('--<span style="color:red">', all_genenames$SYMBOL[sorted$ix], '</span> ',
+        '<a href="https://www.ensembl.org/Danio_rerio/Gene/Summary?db=core;g=', 
+              all_genenames$geneId[sorted$ix], '" target="_blank">',
+              all_genenames$GENENAME[sorted$ix], 
+        '</a> ',
+        '<span style="color:green">', form_str(sorted$x), '</span> ',
+       collapse=" <br/> ")
+    })
+
+genes <- lapply(genes1, function(x){
+    DT::datatable(x, escape = c(1), rownames = FALSE, width = 600, height = 1200, 
+                  options = list(paging= FALSE), 
+                  caption = paste0("TSS info [", nrow(x), " entries] sorted by the gene symbol"))
+})
+
+
+
+```
+
+
+
+## Figures for the paper
+
+### For paper: IQW-TPM-PhastCons plots {#paper-iqw-tpm-plots}
+
+```{r paper-iqw-tpm-plots, warning=FALSE, message=FALSE}
+
+suffix_label <- c("X", "Y", "Z")
+names(suffix_label) <- sample_names
+use_txt_size <- c(20, 20 ,20)
+names(use_txt_size) <- sample_names
+use_axis_text_size <- 35
+use_axis_title_size <- 40
+
+####
+if(do_IQW_TPM_plots){
+    message("Task: Producing IQW_TPM_PhastCons scores combined plot")
+    for(sn in sample_names){
+        stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+        pl_iqw <- get_iqw_ord_plot(iqw = TRUE, y_axis_text = TRUE, 
+                    samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
+                    seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
+                    use_suffix = suffix_label[sn], use_notch = FALSE)
+        pl_iqw <- pl_iqw + ggplot2::ggtitle(label = "Interquantile Width") + 
+            ggplot2::theme(plot.title = element_text(hjust = 0.5, 
+                                                    size = use_txt_size))
+        ##
+        pl_tpm <- get_iqw_ord_plot(tpm = TRUE, y_axis_text = FALSE, 
+                    samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
+                    seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
+                    use_suffix = suffix_label[sn], use_notch = FALSE)
+        pl_tpm <- pl_tpm + ggplot2::ggtitle(label = "Expression Level") + 
+            ggplot2::theme(plot.title = element_text(hjust = 0.5, 
+                                                    size = use_txt_size))
+        ## IQW ordered plots
+        iqw_tpm_ord_pls <- pl_iqw | pl_tpm
+        
+        perSample_pl[[sn]] <- iqw_tpm_ord_pls 
+        
+        
+        title_str <- paste0("Sample_", sn, "_IQW_TPM_plot")
+        pl_w_title <- perSample_pl[[sn]] + plot_annotation(title = title_str)
+        cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+                paste0(title_str, "_paper.pdf")),
+                plot = perSample_pl[[sn]], 
+                base_height = 10, base_width = 15
+                )
+        # cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+        #         paste0(title_str, ".png")),
+        #         plot = pl_w_title,
+        #         base_height = 17, base_width = 8
+        #         )
+        # ggsave(filename = file.path(result_dir_path[[sn]],
+        #        paste0(title_str, ".pdf")),
+        #        plot = pl_w_title,
+        #        width = 10, height = 7)
+        # ggsave(filename = file.path(result_dir_path[[sn]],
+        #        paste0(title_str, ".png")),
+        #        plot = pl_w_title, device = "png", dpi = 300,
+        #        width = 10, height = 7)
+        # print(pl_w_title)
+        
+    }
+    
+}else{
+    message("do_iqw_tpm_plot is FALSE")
+}
+
+
+```
+
+### For paper: Sequence logos of cluster architectures {#paper-arch-seqlogos}
+
+Sequence logos of clusters ordered by their median interquantile width (ascending order). These are included as part of the combined panels. See [64 cells stage](#tripanel1), [dome 30% epiboly stage](#tripanel2) and [prim6 stage](#tripanel3).
+
+```{r paper-seqlogos, collapse=TRUE, cache=TRUE}
+
+#fig.width=11, fig.height=10, out.width="1200px", out.height="800px",
+##
+if(do_plot_arch){
+    use_ht <- list(15, 30, 20)
+    names(use_ht) <- sample_names
+    for(sn in sample_names){
+        stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+        ##
+        message("Generating architectures for clusters of sequences...")
+        fname <- file.path(result_dir_path[[sn]],
+                           paste0("Architectures_0-max_paper.pdf"))
+        iter5_zf_arch_list <- lapply(seq_along(perSample_archR_clusts[[sn]]), 
+          function(y){
+          x <- perSample_archR_clusts[[sn]][[y]]
+          clust_label <- paste0("C",y, suffix_label[sn])
+          pl <- archR::plot_ggseqlogo_of_seqs(as.character(zf_2013_result[[sn]]$rawSeqs[x]), 
+            pos_lab = -45:150, bits_yax = "auto", title = NULL, xt_freq = 15)
+          pl <- pl + theme_classic() +  
+                    theme(axis.text = element_text(size=use_txt_size[[sn]], colour = 'black'),
+                     axis.text.x = element_text(angle=0, vjust = 0.5, hjust = 0.5, size = use_axis_text_size),
+                     axis.text.y = element_text(hjust = -1, size = use_axis_text_size),
+                     # axis.text.y.left = element_text(hjust = -5), 
+                     # axis.text.y.left = element_text(vjust = 0.5, hjust = 1.5), 
+                     axis.title.y = element_text(size = use_axis_title_size),# axis.line.y.right = element_blank(),
+                     axis.title.y.left = element_text(margin = unit(c(0, 0, 0, 0.1), "cm")),
+                     axis.title.y.right = element_text(margin = unit(c(0, 0, 0, 0.5), "cm")),
+                     axis.ticks.length.y.left = unit(0.15, "cm"),
+                     axis.ticks.length.y.right = unit(0.00, "cm"),
+                     axis.ticks.length.x.bottom = unit(0.2, "cm"),
+                     axis.ticks = element_line(linewidth=0.4),
+                     plot.margin = unit(c(0,0,0,0.4), "cm")
+                     ) +
+            ggplot2::scale_y_continuous(breaks = seq(0.0, 2.0, by = 0.5),
+                                        labels = scales::number_format(accuracy = 0.1),
+                                        sec.axis = dup_axis(name = clust_label,
+                                                            labels = NULL))
+          # pl + theme(plot.margin = unit(c(0,0.2,-0.5,0.1), "cm"))
+          # pl + theme(plot.margin = unit(c(0,0,-0.3,0), "cm"))
+          if(y == 1){
+                pl <- pl + theme(plot.margin = unit(c(0,0,0,0.4), "cm"))
+            }else{
+                pl <- pl + theme(plot.margin = unit(c(0,0,0,0.4), "cm"))
+            }
+          ## Any annotations
+          pl <- add_zf_annotation(clust_label, pl = pl, txt_size = use_txt_size)
+          
+          pl
+        })
+        
+        ## keep x-axis text for only few plots
+        iter5_zf_arch_list <- lapply(seq_along(iter5_zf_arch_list), function(x){
+            foo <- iter5_zf_arch_list[[x]] #+ ggplot2::theme(title = element_blank())
+            if(x != length(iter5_zf_arch_list)){
+                foo2 <- foo + ggplot2::theme(
+                            axis.text.x.bottom = element_blank(),
+                            axis.ticks.length.y.left = ggplot2::unit(0.15, "cm"),
+                            axis.ticks.length.x.bottom = ggplot2::unit(0.2, "cm"),
+                            plot.margin = ggplot2::unit(c(0.2, 0.3, -0.01, 0.1), "cm"))
+                return(foo2)
+            }else{
+                foo2 <- foo + ggplot2::theme(
+                            plot.margin = ggplot2::unit(c(0.1, 0.3, -1, 0.1), "cm"))
+                return(foo2)
+            }
+            })
+        
+        ######### Zoomed plot for prim6 stage
+        message("Nb of plots: ", length(iter5_zf_arch_list))
+        if(sn == "prim6"){
+            message("====Creating zoomed in plot====")
+            y <- length(perSample_archR_clusts[[sn]])
+            x <- perSample_archR_clusts[[sn]][[y]]
+            ##
+            sub_seqs <- Biostrings::subseq(zf_2013_result[[sn]]$rawSeqs[x], 
+                start = 91, 
+                end = Biostrings::width(zf_2013_result[[sn]]$rawSeqs[1]))
+            ##
+            pl <- seqArchR::plot_ggseqlogo_of_seqs(sub_seqs, 
+            pos_lab = 45:150, bits_yax = "auto", title = NULL, xt_freq = 5)
+            zoomed_pl <- pl + theme_classic() +  
+                ggplot2::scale_x_continuous(breaks = seq(1, 106, by = 5), 
+                                            labels = seq(45, 150, by = 5)) + 
+                ggplot2::scale_y_continuous(breaks = seq(0.0, 0.5, by = 0.05),
+                                        labels = scales::number_format(accuracy = 0.05),
+                                        sec.axis = dup_axis(name = paste0("C",y, suffix_label[sn]),
+                                                            labels = NULL)) + 
+                theme(axis.text = element_text(size=use_axis_text_size, colour = 'black'),
+                     axis.text.x = element_text(angle=0, vjust = 0.5, hjust = 0.5),
+                     axis.text.y = element_text(hjust = -1),
+                     # axis.text.y.left = element_text(hjust = -5), 
+                     # axis.text.y.left = element_text(vjust = 0.5, hjust = 1.5), 
+                     axis.title.y = element_text(size=use_axis_title_size),# axis.line.y.right = element_blank(),
+                     axis.title.y.left = element_text(margin = unit(c(0, 0, 0, 0.1), "cm")),
+                     axis.title.y.right = element_text(margin = unit(c(0, 0, 0, 0.5), "cm")),
+                     axis.ticks.length.y.left = unit(0.15, "cm"),
+                     axis.ticks.length.y.right = unit(0.00, "cm"),
+                     axis.ticks.length.x.bottom = unit(0.2, "cm"),
+                     axis.ticks = element_line(size=0.4),
+                     # plot.margin = unit(c(0,0,0,0), "cm")
+                     plot.margin = unit(c(0,0,0,0), "cm")
+                     )
+            
+
+        }
+        message("Nb of plots: ", length(iter5_zf_arch_list))
+        #########
+        
+        # print(length(iter5_dm_arch_list))
+        
+        r1c1 <- cowplot::plot_grid(plotlist = iter5_zf_arch_list, ncol = 1, 
+                                   nrow = length(perSample_archR_clusts[[sn]]))
+        cowplot::save_plot(fname, plot = r1c1, limitsize = FALSE,
+                           base_height = 2, base_width = 21,
+                           ncol = 1,
+                           nrow = length(perSample_archR_clusts[[sn]]),
+                           dpi = 600)
+        # cowplot::ggsave2(fname, plot= r1c1, width=25, height=use_ht[[sn]], units="cm",
+        #       dpi = 600, limitsize = FALSE)
+        
+        # ## save PNGs
+        # for(p in 1:length(iter5_zf_arch_list)){
+        #     this_result_dir_path <- file.path(result_dir_path[[sn]], "arch_png")
+        #     stopifnot(check_and_create_dir(this_result_dir_path))
+        #     fname <- file.path(this_result_dir_path, 
+        #             paste0("Architecture_clust", p, "_0-max.png"))
+        #     cowplot::ggsave2(fname, plot= iter5_zf_arch_list[[p]], 
+        #       width=25, height=3, units="cm", dpi = 300)
+        # }
+        # r1c1
+        perSample_arch_combined[[sn]] <- r1c1
+        perSample_arch[[sn]] <- iter5_zf_arch_list
+        
+        if(file.exists(fname)){
+            knitr::include_graphics(fname)
+        }
+    }
+}else{
+    message("do_plot_arch is FALSE")
+}
+##
+
+
+
+```
+
+
+### For paper: Overlaps
+
+```{r get-overlaps}
+overlapTypeInfo <- vector("list", length(sample_names))
+names(overlapTypeInfo) <- sample_names
+
+
+iter_sample_names <- c(1,2,3,1,2)
+
+for(s in seq_along(sample_names)){
+  this_clusters <- perSample_archR_clusts[[sample_names[s]]]
+  overlapTypeInfo[[s]] <- data.frame(
+        clust = rep("0", length(unlist(this_clusters))),  
+        Type = rep("N", length(unlist(this_clusters)))
+          )
+  perCluster_overlaps <- vector("list", length(this_clusters))
+  for(l in seq_along(this_clusters)){
+      sam <- this_clusters[[l]]
+      overlapTypeInfo[[s]][sam, "clust"] <- l
+      ## overlapping with next sample/s/s+1
+      Atemp <- IRanges::overlapsAny(
+        query = GenomicRanges::promoters(
+            perSample_CAGEobj[[ sample_names[[iter_sample_names[s]]] ]][sam],
+            upstream = 45, downstream = 45),
+        subject = GenomicRanges::promoters(
+            perSample_CAGEobj[[ sample_names[[iter_sample_names[s+1] ]] ]],
+            upstream = 45, downstream = 45))
+      A <- which(Atemp == TRUE)
+      Anb <- length(A)
+      # print(A)
+      # print(Anb)
+      useIdx <- this_clusters[[l]][A]
+      overlapTypeInfo[[s]][useIdx, "Type"] <- "1-2"
+      
+      ## overlapping with next to next sample/s/s+2
+      Btemp <- IRanges::overlapsAny(
+        query = GenomicRanges::promoters(
+            perSample_CAGEobj[[ sample_names[[iter_sample_names[s]]] ]][sam],
+            upstream = 45, downstream = 45),
+        subject = GenomicRanges::promoters(
+            perSample_CAGEobj[[ sample_names[[iter_sample_names[s+2] ]] ]],
+            upstream = 45, downstream = 45))
+      ##
+      B <- which(Btemp == TRUE)
+      Bnb <- length(B)
+      # print(B)
+      # print(Bnb)
+      useIdx <- this_clusters[[l]][B]
+      overlapTypeInfo[[s]][useIdx, "Type"] <- "1-3"
+      
+      ## unique to self
+      nonA <- which(Atemp == FALSE)
+      nonB <- which(Btemp == FALSE)
+      C <- intersect(nonA, nonB)
+      Cnb <- length(C)
+      # print(C)
+      # print(Cnb)
+      useIdx <- this_clusters[[l]][C]
+      overlapTypeInfo[[s]][useIdx, "Type"] <- "1"
+      
+      ## Common all
+      inAll <- intersect(A,B)
+      Dnb <- length(inAll)
+      # print(inAll)
+      # print(Dnb)
+      useIdx <- this_clusters[[l]][inAll]
+      overlapTypeInfo[[s]][useIdx, "Type"] <- "1-2-3"
+      
+      ##
+      # message(paste(length(sam), Anb, Bnb, Cnb, Dnb, sum(Anb,Bnb,Cnb,Dnb), collapse=", "))
+      # print(Bnb)
+      # print(Cnb)
+      perCluster_overlaps[[l]] <- c(Anb, Bnb, Cnb, Dnb)
+  }
+  perCluster_overlaps_perSample[[sample_names[s]]] <- do.call(rbind, perCluster_overlaps)
+}
+
+
+use_labs <- list(c("64C", "64C & D", "All", "64C & P6"), 
+             c("D", "D & P6", "All", "64C & D"),
+             c("P6", "64C & P6", "All", "D & P6")
+            )
+names(use_labs) <- sample_names
+bar_pls <- vector("list", length(sample_names))
+names(bar_pls) <- sample_names
+
+for(sn in sample_names){
+    # result_dir_path <- file.path(archR_org_results_path, paste0(sn, "_results"))
+    # stopifnot(check_and_create_dir(result_dir_path))
+    
+    clust_labs <- unlist(lapply(seq_along(perSample_archR_clusts[[sn]]),
+      function(x){
+        paste0("C", x, suffix_label[[sn]] 
+            # " (", length(perSample_archR_clusts[[sn]][[x]]), ")"
+            )
+        }))
+     
+    bar_pl <- ggplot(overlapTypeInfo[[sn]], 
+      aes(y = fct_rev(reorder(clust, as.numeric(clust))), fill = Type)) + 
+      geom_bar(position = position_fill(reverse=TRUE),
+                width = 0.6) +
+      ggplot2::theme_bw() + 
+      ggplot2::scale_fill_discrete(name = "", 
+                                   labels = use_labs[[sn]]) +
+      ggplot2::scale_x_continuous("Proportion", limits = c(0,1)) +
+      # ggplot2::ylab(NULL) + 
+      ggplot2::scale_y_discrete("", position = "left",
+                        labels =  rev(clust_labs)) +
+      ggeasy::easy_legend_at("top") +
+      ggplot2::theme(legend.text = element_text(size = 10)) + 
+      ggplot2::guides(fill = guide_legend(ncol = 2, byrow = TRUE)) +
+      ggeasy::easy_all_text_size(size=10)
+    bar_pls[[sn]] <- bar_pl
+}
+
+overlap_grid_pl <- cowplot::plot_grid(plotlist = bar_pls, nrow = 1, align = "h")
+
+cowplot::save_plot(filename = file.path(result_dir_path[[sn]], "zf_figure_showing_overlaps_for_stages.pdf"),
+                plot = overlap_grid_pl, ncol = 3, nrow = 2,
+                base_height = 2, base_width = 3, limitsize=FALSE)
+
+```
+
+
+
+### For paper: All of it together
+
+```{r paper-all-together, warning=FALSE, message=FALSE}
+
+## fig.width=18, fig.height=12, warning=FALSE,results='hide'
+## use cowplot to arrange plots
+txdb_ensGene_fname <- file.path(archR_org_data_path, paste0("TxDb.Drerio.UCSC.danRer10.ensGene_self.2021-06-19.sqlite"))
+if(!file.exists(txdb_ensGene_fname)){
+    txdb_ensGene_ucsc <- GenomicFeatures::makeTxDbFromUCSC(genome="danRer10",
+                                                       tablename="ensGene")
+    AnnotationDbi::saveDb(txdb_ensGene_ucsc, file= txdb_ensGene_fname)
+}else{
+    txdb_ensGene_ucsc <- AnnotationDbi::loadDb(txdb_ensGene_fname)
+}
+
+use_ht <- list(1.5, 1.5, 2)
+use_wd <- list(14, 14, 18)
+# use_axis_text_size <- 25
+# use_axis_title_size <- 30
+use_legend_text_size <- list(45, 45, 25)
+names(use_legend_text_size) <- sample_names
+    
+names(use_ht) <- sample_names
+names(use_wd) <- sample_names
+
+panel_pls <- vector("list", length(sample_names))
+names(panel_pls) <- sample_names
+
+for(sn in sample_names){
+    
+    stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+    
+    clust_labs <- unlist(lapply(seq_along(perSample_archR_clusts[[sn]]),
+      function(x){
+        paste0(x, "_(n=", length(perSample_archR_clusts[[sn]][[x]]), ")")
+        }))
+    
+    clustwise_anno <- lapply(perSample_archR_clusts[[sn]], function(x){
+        foo_anno <- ChIPseeker::annotatePeak(perSample_CAGEobj[[sn]][x,],
+                                             tssRegion=c(-500, 100),
+                                             TxDb = txdb_ensGene_ucsc,
+                                             annoDb = "org.Dr.eg.db")
+        foo_anno
+    })
+    names(clustwise_anno) <- seq(1, length(perSample_archR_clusts[[sn]]))
+    
+    ## Solution using custom plotting
+    features_order <- c("Promoter", "5' UTR", "1st Exon", "Other Exon",
+     "1st Intron", "Other Intron", "Distal Intergenic", "3' UTR", 
+        "Downstream (<=300)")
+    ## 
+    sam <- dplyr::bind_rows(lapply(clustwise_anno, function(x) x@annoStat), .id = "clust")
+    
+    colrs <- RColorBrewer::brewer.pal(n = 9, name = "Paired")
+    
+    levels(sam$Feature) <- features_order
+    
+    names(colrs) <- features_order
+
+    clustwise_annobar <- ggplot(sam,
+      aes(y = fct_rev(reorder(clust, as.numeric(clust))), x = Frequency, fill = Feature)) +
+      geom_bar(stat = "identity", width = 0.6, position = position_fill(reverse=TRUE)) +
+      ggplot2::scale_fill_manual(name = "", values = colrs) +
+      ggplot2::theme_classic() +
+      ggplot2::ylab(NULL) +
+      ggplot2::xlab("Proportion") + 
+      ggplot2::theme(
+                     axis.text.y = element_blank(),
+                     axis.ticks.length.y.left = unit(0.1, units = "cm"),
+                     axis.ticks.length.x.bottom = unit(0.1, units = "cm"),
+                     axis.text.x.bottom = element_text(size = use_axis_text_size),
+                     axis.title.x.bottom = element_text(size = use_axis_title_size),
+                     legend.position = "top",
+                     legend.text = element_text(size = use_legend_text_size[[sn]])
+                     ) +
+      ggplot2::guides(fill = guide_legend(ncol = 2, byrow = TRUE,
+                                    legend.box.margin = margin(5, 5, 0, 0)
+                                    #legend.margin =margin(r=10,l=10,t=5,b=5),
+                                    #legend.key.size = unit(5, "cm")
+                                         ))
+    
+      
+
+    ## Solution using ChIPseeker package function
+    # names(clustwise_anno) <- paste0("C", seq(length(clustwise_anno)), suffix_label[sn])
+    # clustwise_annobar <- ChIPseeker::plotAnnoBar(clustwise_anno)
+    # clustwise_annobar <- clustwise_annobar + ggplot2::theme_classic() +
+    # ggplot2::theme(text=element_text(size=use_txt_size),
+    #                title = NULL,
+    #                legend.position = "bottom",
+    #                axis.text.y.left = element_blank()) +
+    # ggplot2::ggtitle(NULL) +
+    # ggplot2::guides(fill = guide_legend(nrow = 3, byrow = TRUE
+    #                                   ))
+    
+    if(sn == "prim6"){
+        ## Collect legend for later
+        legend <- cowplot::get_legend(
+                    # create some space to the left of the legend
+                    clustwise_annobar + theme(legend.box.margin = margin(0, 0, 0, 0))
+                    )
+        bottom_row <- cowplot::plot_grid(NULL, zoomed_pl, NULL,
+                                    nrow = 1, rel_widths = c(0.4, 1, 0.25),
+                                    align = "h")
+        top_row <- cowplot::plot_grid(perSample_pl[[sn]],
+                                    perSample_arch_combined[[sn]],
+                                    clustwise_annobar + ggplot2::theme(legend.position = "none"),
+                                    ncol = 3,
+                                    rel_widths = c(0.5, 1, 0.3),
+                                    # rel_heights = c(1, 2.5, 1),
+                                    rel_heights = c(1, 0.3),
+                                    axis = "tb",
+                                    align = "h")
+        
+        panel_pl <- cowplot::plot_grid(top_row,
+                                    bottom_row,
+                                    nrow = 2,
+                                    rel_heights = c(1, 0.1),
+                                    axis = "tb",
+                                    align = "h"
+                                    )
+        legend_row <- cowplot::plot_grid(NULL, NULL, NULL, legend, nrow = 1)
+        ## With improved legend?
+        grid_pl <- cowplot::plot_grid(legend_row, panel_pl,
+            rel_heights = c(0.1, 1), ncol = 1)
+        cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+                                            paste0("zebrafish_figure_paper_", sn,".pdf")),
+                plot = grid_pl, ncol = 3, nrow = 8,
+                base_height = 3, base_width = 14,
+                limitsize=FALSE, dpi = 300, device = "pdf")
+    }else{
+        ## Collect legend for later
+        legend2 <- cowplot::get_legend(
+                    # create some space to the left of the legend
+                    clustwise_annobar + theme(legend.box.margin = margin(0, 0, 0, 0))
+                    )
+        panel_pl <- cowplot::plot_grid(perSample_pl[[sn]],
+                                    perSample_arch_combined[[sn]],
+                                    clustwise_annobar + ggplot2::theme(legend.position = "none"),
+                                    ncol = 3, 
+                                    #labels = c('A', 'B'), vjust=1, hjust = 0,
+                                    rel_widths = c(0.5, 1, 0.3),
+                                    # rel_heights = c(1, 2.5, 1),
+                                    rel_heights = c(1),
+                                    axis = "tb",
+                                    align = "h"
+                                    )
+        cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+                                            paste0("zebrafish_figure_paper_", sn,".pdf")),
+                plot = panel_pl, ncol = 3, nrow = 10,
+                base_height = 3, base_width = 20,
+                limitsize=FALSE, dpi = 300, device = "pdf")
+        panel_pls[[sn]] <- panel_pl
+    }
+
+}
+
+## Create a grid for panels from first two stages
+stage_combined_panel_pl <- cowplot::plot_grid(panel_pls[[1]], panel_pls[[2]],
+                                    nrow = 2, 
+                                    labels = c('A', 'B'), #vjust=0, hjust = 0,
+                                    label_size = use_axis_title_size+10,
+                                    rel_heights = c(0.6, 1),
+                                    axis = "tb",
+                                    align = "h"
+                                    )
+legend_row <- cowplot::plot_grid(NULL, NULL, NULL, legend2, nrow = 1)
+## With improved legend?
+grid_pl <- cowplot::plot_grid(legend_row, stage_combined_panel_pl,
+    rel_heights = c(0.1, 1), ncol = 1)
+cowplot::save_plot(filename = file.path(result_dir_path[[sn]],                                            paste0("zebrafish_figure_paper_combined_stage_1and2.pdf")),
+                plot = grid_pl, ncol = 3, nrow = 15,
+                base_height = 3, base_width = 18,
+                limitsize=FALSE, dpi = 300, device = "pdf")
+
+
+```
+
+### For paper: Chr4 vs Other chromosomes proportion
+
+```{r}
+
+
+cl_char <- c("X", "Y", "Z")
+pl_list <- vector("list", length(sample_names))
+for(sn in seq_along(sample_names)){
+    seqArchRplus::per_cluster_strand_dist(sname = sample_names[[sn]], 
+        clusts = perSample_archR_clusts[[sn]], 
+        info_df = samarth_df[[sn]], dir_path = archR_org_results_path)
+    
+    
+    info_df <- samarth_df[[sn]]
+    clusts <- perSample_archR_clusts[[sn]]
+    
+    chr4_df_list <- lapply(seq_along(clusts), function(x){
+        df_strand <- data.frame(
+            "chr" = info_df$chr[clusts[[x]]],
+            "strand" = info_df$strand[clusts[[x]]]
+        )
+        df_strand_tab <- table(df_strand)
+        chr4_df <- data.frame(Chromosome = c("Chr4", "Other"), 
+                              Freq = c(0, 0))
+        total <- sum(df_strand_tab)
+        chr4_df$Freq[1] <- if("chr4" %in% rownames(df_strand_tab)) sum(df_strand_tab["chr4",]) else 0
+        chr4_df$Freq[2] <- total - chr4_df$Freq[1]
+        chr4_df$Proportion <- chr4_df$Freq / total
+        return(chr4_df)
+    })
+    
+    
+    chr4_df <- do.call(rbind, chr4_df_list)
+    
+    chr4_df$Cluster <- rep(paste0("C", seq(chr4_df_list), cl_char[sn]), each=2)
+    
+    pl_list[[sn]] <- ggpubr::ggbarplot(chr4_df, x = "Cluster", y = "Proportion", 
+        ylim = c(0,1.0), palette = "Paired2", fill = "Chromosome", 
+        order = paste0("C", rev(seq(chr4_df_list)), cl_char[sn]), 
+        width = 0.7, orientation = "horizontal", legend = "top")
+    
+    cowplot::ggsave2(filename = file.path(result_dir_path[[sn]], 
+                                            "Chr4_OtherChr_proportions.pdf"), 
+                    plot = pl_list[[sn]], device = "pdf", width = 7, 
+                    height = 5)
+}
+
+grid_pl <- cowplot::plot_grid(pl_list[[1]] + ggplot2::theme(legend.position = "none"),
+                              pl_list[[2]] + ggplot2::theme(legend.position = "none"),
+                              pl_list[[3]] + ggplot2::theme(legend.position = "none"),
+                                ncol = 3)
+
+legend <- cowplot::get_legend(
+  # create some space to the left of the legend
+  pl_list[[1]] + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+
+grid_pl <- cowplot::plot_grid(legend, grid_pl, 
+                rel_heights = c(0.07,1), 
+                ncol = 1)
+cowplot::save_plot(filename = file.path(result_dir_path[[sn]],
+                                paste0("zebrafish_figure_paper_chr4_proportion_all_samples.pdf")),
+                plot = grid_pl, ncol = 3, 
+                base_height = 5, base_width = 3,
+                limitsize=FALSE, dpi = 300, device = "pdf")
+
+
+
+```
+
+### For paper: GO terms enrichments
+```{r paper-go-terms}
+
+# c1-3,5x
+# c4,8y
+# c6,7,8, 9z
+
+## no ww signal/WW-box arch
+arch_term <- "clusters with and without downstream W signal"
+clust_list <- list(## Non-WW enrichment downstream
+                    c(1,2), c(1,3), c(1,5), ## Also has W-box 
+                    c(2,4), c(2,8),         ## Also has W-box
+                    c(3,7), c(3,8), c(3,9), ## 
+                    ## WW enrichment downstream
+                    c(1,1), c(1,6),         ## Also has W-box
+                    c(2,5), c(2,6), c(2,7), ## Also has W-box
+                    c(3,10)                 ## only slight
+    )
+
+go_res <- lapply(clust_list, function(x){
+                clusterProfiler::enrichGO(perSample_entrezList[[x[1]]][[x[2]]],
+                    OrgDb = org.Dr.eg.db, ont = "all", pool = TRUE, 
+                    keyType = "ENTREZID", 
+                    pvalueCutoff = 0.05, qvalueCutoff = 0.1)
+    })
+use_names <- paste0("C", unlist(lapply(clust_list, function(x) x[2])), 
+                c(rep("X", 3), rep("Y", 2), rep("Z",3), rep("X", 2), rep("Y", 3), rep("Z",1)))
+stopifnot(length(use_names) == length(go_res))
+names(go_res) <- use_names
+
+compare_result <- clusterProfiler::merge_result(go_res)
+
+
+go_term_fs <- 12
+show_cats <- c(5, 10)
+go_pl <- vector("list", length(show_cats))
+for(i in seq_along(show_cats)){
+    p1 <- dotplot(compare_result, showCategory = show_cats[i],
+                          title = paste0("Comparing GO terms enriched for ", arch_term),
+                          font.size = go_term_fs)
+    pl <- p1 + DOSE::theme_dose(font.size = go_term_fs) +
+            ggplot2::scale_y_discrete(labels = scales::label_wrap(50)) +
+            ggplot2::scale_color_gradient() + 
+            ggplot2::expand_limits(y = -1) + 
+            ggplot2::annotate("rect", fill = c("red", "blue"), alpha = 0.5, 
+                            xmin = c(-Inf, 7.5), xmax = c(7.5,Inf),
+                            ymin = -1, ymax = 0) +
+            ggplot2::theme(title = element_text(size = go_term_fs),
+                           legend.text = element_text(size = go_term_fs),
+                           legend.title = element_text(size = go_term_fs))
+    
+    go_pl[[i]] <- pl
+    cowplot::save_plot(
+        filename = file.path(result_dir_path[[3]], 
+            paste0(stringr::str_replace_all(arch_term, " ", "_"), "_go_plot_top", show_cats[i], "_terms.pdf")), 
+        plot = go_pl[[i]], 
+        base_height = 5, base_width = 8)    
+}
+wwbox_go_pl <- go_pl
+
+
+# go_grid_pl <- cowplot::plot_grid(wwbox_go_pl[[1]], NULL, rel_widths = c(1, 0.4))
+comb_pl <- cowplot::plot_grid(grid_pl, wwbox_go_pl[[1]], nrow = 2, 
+                                rel_heights = c(0.3, 1),
+                                labels = "AUTO", label_size = 14)
+
+cowplot::save_plot(filename = file.path(result_dir_path[[3]], 
+                                paste0("combined_top5_GO_mix_clusts_chr4_prop.pdf")), 
+                    plot = comb_pl, base_height = 15, base_width = 14)
+
+comb_pl <- cowplot::plot_grid(wwbox_go_pl[[2]], nrow = 1, labels = "AUTO", label_size = 14)
+
+cowplot::save_plot(filename = file.path(result_dir_path[[3]], 
+                                paste0("combined_top10_GO_mix_clusts.pdf")), 
+                    plot = comb_pl, base_height = 15, base_width = 14)
+
+
+```
+
+
+
+# Session Info
+
+```{r sessionInfo, echo=FALSE}
+
+sessionInfo()
+
+```
+

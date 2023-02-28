@@ -1,0 +1,679 @@
+---
+author: "Sarvesh Nikumbh"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+title: "(Improved) archR result analysis report for CTSS in modENCODE DM"
+output: 
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+  editor_options:
+    chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse=TRUE)
+
+data_path <- file.path("experiments", "data")
+results_path <- file.path("experiments", "results")
+
+## Setup paths on disk
+data_path_on_disk <- data_path
+result_path_on_disk <- results_path
+
+## paths specific to the organism
+archR_org_data_path <- file.path(data_path, "drosophila-chen2014")
+archR_org_results_path <- file.path(results_path, "drosophila-chen2014", 
+                                    "with_archR_v0.1.8")
+
+## 
+
+##
+# sample_name <- params$sample_name
+# result_dir_path <- file.path(params$result_path_on_disk, params$result_dir_name)
+# reordered <- params$reordered
+# dist_method <- params$dist_method
+# linkage <- params$linkage
+# topN_val <- params$topN_val
+# regularize_choice <- params$regularize
+# iteration <- params$archR_iteration
+# iqw_order_by_median <- params$iqw_order_by_median
+
+
+
+#####
+do_plot_seq_image <- TRUE
+do_plot_arch <- TRUE
+do_IQW_TPM_plots <- TRUE
+do_bedfile_write <- TRUE
+iqw_order_by_median <- TRUE
+
+```
+
+
+
+# modENCODE Chen et al. (2014) CAGE Data {#sample-name-section}
+
+This file produces analyses plots for modENCODE from Chen et al. 2014.
+
+
+```{r library, echo=FALSE, include=FALSE, message=FALSE}
+seed_val <- 11992288
+set.seed(seed_val)
+
+
+# library(TxDb.Mmusculus.UCSC.mm9.knownGene)
+## ^ for annotating CAGE data and GO term enrichment analysis in Mice
+library(BSgenome.Dmelanogaster.UCSC.dm6)     # Bioconductor v1.4.1
+library(TxDb.Dmelanogaster.UCSC.dm6.ensGene) # Bioconductor v3.12.0
+library(org.Dm.eg.db)                        # Bioconductor v3.14.0
+
+## Package version annotations using RStudio addin annotator
+## https://luisdva.github.io/rstats/annotater/
+library(CAGEr, lib.loc = "/usr/local/lib/R/site-library")                               # Bioconductor v1.34.0
+library(readr)                               # CRAN v2.0.2
+library(reshape2)                            # CRAN v1.4.4
+library(ggplot2)                             # CRAN v3.3.5
+library(forcats)                             # CRAN v0.5.1
+library(patchwork)                           # CRAN v1.1.1
+## ^ for plotting
+## 
+## GenomeInfoDb now available in sarvesh's user library
+library(GenomeInfoDb)                        # Bioconductor v1.30.0
+library(ChIPseeker)                          # Bioconductor v1.30.0
+library(clusterProfiler)                     # Bioconductor v4.2.0
+library(DT)                                  # CRAN v0.19
+library(scales)
+
+
+## 
+# library(seqPattern)
+# data("TBPpwm") #from seqPattern
+library(heatmaps) ## for plotting motif heatmaps
+library(GenomicScores) ## for phastcons scores
+library(PWMEnrich)                           # Bioconductor v4.30.0
+library(PWMEnrich.Dmelanogaster.background)  # [Drosophila_melanogaster_Data::NA/NA] v4.27.1
+data(MotifDb.Dmel.PFM, package = "PWMEnrich.Dmelanogaster.background")
+
+library(htmlwidgets) # helping slickR
+library(slickR) # viewing images/plots as a carousel
+
+```
+
+
+
+
+
+## Plots for sections marked TRUE are included in this report.
+
+```{r source-helper-funcs, include=FALSE}
+
+
+# source('helper-funcs.R')
+
+```
+
+## Setting up variables
+
+```{r setup-variables}
+
+sample_names <- paste0("")
+
+archR_best_run <- vector("list", length(sample_names))
+names(archR_best_run) <- sample_names
+
+dm_2014_result <- vector("list", length(sample_names))
+names(dm_2014_result) <- sample_names
+
+dm_chen2014_bed_info <- vector("list", length(sample_names))
+names(dm_chen2014_bed_info) <- sample_names
+
+seqs_clusters_as_list <- vector("list", length(sample_names))
+names(seqs_clusters_as_list) <- sample_names
+
+seqs_clusters_as_list_ordered <- vector("list", length(sample_names))
+names(seqs_clusters_as_list_ordered) <- sample_names
+
+perSample_CAGEobj <- vector("list", length(sample_names))
+names(perSample_CAGEobj) <- sample_names
+
+perSample_peakAnno <- vector("list", length(sample_names))
+names(perSample_peakAnno) <- sample_names
+
+samarth_df <- vector("list", length(sample_names))
+names(samarth_df) <- sample_names
+##
+perSample_phastCons_scores <- vector("list", length(sample_names))
+names(perSample_phastCons_scores) <- sample_names
+
+##
+## lists storing plots
+## 
+## store iqw+tpm plots
+perSample_pl <- vector("list", length(sample_names)) 
+names(perSample_pl) <- sample_names
+
+## store architectures' plots
+perSample_arch <- vector("list", length(sample_names)) 
+names(perSample_arch) <- sample_names
+
+## store architectures' plots combined
+perSample_arch_combined <- vector("list", length(sample_names)) 
+names(perSample_arch_combined) <- sample_names
+
+
+perSample_arch_posStrand <- vector("list", length(sample_names)) 
+names(perSample_arch_posStrand) <- sample_names
+
+perSample_arch_negStrand <- vector("list", length(sample_names)) 
+names(perSample_arch_negStrand) <- sample_names
+
+
+## store result_directory path
+result_dir_path <- vector("list", length(sample_names)) 
+names(result_dir_path) <- sample_names
+
+## store go plots
+perSample_go <- vector("list", length(sample_names)) 
+names(perSample_go) <- sample_names
+
+
+## store clusters
+perSample_archR_clusts <- vector("list", length(sample_names)) 
+names(perSample_archR_clusts) <- sample_names
+
+## store overlaps info
+perCluster_overlaps_perSample <- vector("list", length(sample_names)) 
+names(perCluster_overlaps_perSample) <- sample_names
+
+################################################################################
+## Per section some variables need to be set. These are done here
+```
+
+
+
+```{r setup-cager-obj}
+txdb <- TxDb.Dmelanogaster.UCSC.dm6.ensGene
+## CAGEr object processing
+
+
+# read TagClusters information from corresponding RDS file for sample
+# All samples in one RDS object
+# cager_obj <- "/mnt/storage/cage_datasets/drosophila_melanogaster/dm6/cager_objects/myCAGEset_Normalised_TagC_dmelanogaster_dm6_chen_sample_processedMergedSamples.rds"
+
+
+
+ok_chr_names <- c("chr2L", "chr2R", "chr3L", "chr3R", "chrM",  "chrX",  "chrY")
+
+for(sn in sample_names){
+    result_dir_path[[sn]] <- file.path(archR_org_results_path, 
+                                       paste0(sn, "_results"))
+}
+
+
+
+
+
+```
+
+```{r read-result-and-TCbed}
+
+## RAL28, 2-4h, 1e-08, FTTF seems satisfactory
+##
+
+for(sn in sample_names){
+  archR_best_run[[sn]] <- 
+  file.path(archR_org_results_path, 
+            paste0("archR_result_drosophila_chen2014", sn,
+                   "_modSelType_stability_chunkSize_5000", 
+                   "_bound_1e-08_aggl_ward.D_dist_euclid_collate_FTTTF"))
+  if(file.exists(archR_best_run[[sn]])){
+    dm_2014_result[[sn]] <- readRDS(file.path(archR_best_run[[sn]],
+                                              "archRresult.rds"))
+  }else{
+    stop("Check if file exists. ", archR_best_run[[sn]])
+  }
+  ## Bed Info -- IQW and dominant TPM values
+  bed_fname <- file.path(archR_org_data_path, 
+                         paste0("dm6_samarth_chen_et_al_TC_sample_", sn, "_minTPM1.bed"))
+  
+  dm_chen2014_bed_info[[sn]] <- read.delim(file = bed_fname,
+                              sep = "\t", header = TRUE,
+                              col.names = c("chr", "start", "end", "IQW", 
+                                            "domTPM", "strand"))
+}
+
+```
+
+## Prepare per sample GRanges from CAGEr object
+
+```{r make-cager-obj, echo=FALSE, cache=TRUE}
+
+## newly processed CAGE data is already a GRanges object
+
+# myCAGEobject <- readRDS(cager_obj)
+
+# CAGEr::cumulativeCTSSdistribution(myCAGEobject, clusters = "tagClusters")
+# 
+# CAGEr::quantilePositions(myCAGEobject, clusters = "tagClusters", qLow = 0.1, qUp = 0.9)
+
+
+## Per sample TCs
+
+for(sn in sample_names){
+    message("SAMPLE: ", sn)
+    ## With newly_processed data, TCs for individual samples are in separate files
+    cager_obj <- file.path(archR_org_data_path, 
+                           paste0("dm6_samarth_chen_et_al_TC_sample_", sn, "_minTPM1.rds"))
+    myCAGEobject <- readRDS(cager_obj)
+    result_dir_path <-file.path(archR_org_results_path, 
+                                paste0(sn, "_results"))
+    stopifnot(check_and_create_dir(result_dir_path))
+    gr_CAGEobj_perSample_fname <- file.path(result_dir_path, 
+                                  paste("cagerObj", sn, "gr.rds", sep="_"))
+    if(!file.exists(gr_CAGEobj_perSample_fname)){
+        # cli::cli_alert_info("Preparing new GRanges obj from CAGEr object")
+        # myCAGEobject_thisSample <-
+        #     CAGEr::tagClusters(myCAGEobject, samples = sn, 
+        #                 returnInterquantileWidth = TRUE, qLow = 0.1, qUp = 0.9)
+    
+        # ## Keeping only standard chromosomes
+        # message("Keeping only standard chromosomes")
+        # ok_idx <- which(myCAGEobject_thisSample$chr %in% ok_chr_names)
+        # myCAGEobject_thisSample <- myCAGEobject_thisSample[ok_idx,]
+        
+        ## Filter >= 1TPM
+        message("Filtering >= 1TPM")
+        tcGR <- myCAGEobject[
+          which(myCAGEobject$tpm.dominant_ctss >= 1),]
+        
+        ## Keeping only standard chromosomes
+        message("Keeping only standard chromosomes")
+        tcGR <- GenomeInfoDb::keepStandardChromosomes(tcGR,
+                                        species = names(genomeStyles())[5],
+                                        pruning.mode = "coarse")
+        
+        ##
+        message("Turning into GRanges object around the dominant tss...")
+        gr_myCAGEobject_thisSample <- GenomicRanges::GRanges(seqnames = seqnames(tcGR),
+                                   ranges = IRanges::IRanges(start=tcGR$dominant_ctss, width=1),
+                                   strand = tcGR@strand)
+        
+        seqlengths(gr_myCAGEobject_thisSample) <- seqlengths(BSgenome.Dmelanogaster.UCSC.dm6)[names(seqlengths(tcGR))]
+        
+        gr_myCAGEobject_thisSample <- trim(gr_myCAGEobject_thisSample)
+        
+        # gr_myCAGEobject_thisSample <-
+        #     GenomicRanges::GRanges(
+        #       seqnames = myCAGEobject_thisSample[,"chr"],
+        #       ranges = IRanges::IRanges(
+        #       start=myCAGEobject_thisSample[,"dominant_ctss"], width=2),
+        #                            myCAGEobject_thisSample[,"strand"])
+    
+        # seqlengths(gr_myCAGEobject_thisSample) <- 
+        #   seqlengths(BSgenome.Dmelanogaster.UCSC.dm6)[
+        #     names(seqlengths(gr_myCAGEobject_thisSample))]
+        gr_myCAGEobject_thisSample <- trim(gr_myCAGEobject_thisSample)
+        saveRDS(file = gr_CAGEobj_perSample_fname, 
+                object = gr_myCAGEobject_thisSample)
+    }else{
+        cli::cli_alert_info("Using saved GRanges obj from CAGEr object")
+        gr_myCAGEobject_thisSample <- readRDS(gr_CAGEobj_perSample_fname)
+    }
+    perSample_CAGEobj[[sn]] <- gr_myCAGEobject_thisSample
+    perSample_peakAnno[[sn]] <- ChIPseeker::annotatePeak(
+                                    gr_myCAGEobject_thisSample,
+                                    tssRegion=c(-500, 100),
+                                    TxDb=txdb,
+                                    annoDb="org.Dm.eg.db")
+
+}
+
+
+```
+
+
+## Arbitrarily ordered archR clusters {#prepare-objects}
+
+By default, the clusters are ordered by their _median_ interquantile widths when this information is available. But, for this particular data from Chen et al., 2014, interquantile width or shape information is not availble.
+
+### Sample1 -- No name, one and only sample
+
+```{r prepare-clusters-new-sample1}
+
+sn <- 1
+itr <- 5
+use_aggl <- 'ward.D' 
+use_dist <- 'cor'
+
+#####
+iter5_clusts_reord <- archR::collate_archR_result(
+  result = dm_2014_result[[sample_names[sn]]], 
+  iter = itr, clust_method = 'hc', aggl_method = use_aggl, 
+  dist_method = use_dist, regularize = TRUE, topn = 50, 
+  flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE, 
+  return_order = TRUE)
+
+clust_archR_ord_list <- archR::get_seqs_clust_list(
+  seqs_clust_lab = dm_2014_result[[sample_names[[sn]]]]$seqsClustLabels[[itr]])
+
+clust_hc_ord_list <- lapply(iter5_clusts_reord$order, function(x){
+  clust_archR_ord_list[[x]]
+})
+
+ordered_arch_pl <- archR::plot_arch_for_clusters(
+  seqs = dm_2014_result[[sample_names[[sn]]]]$rawSeqs, 
+  clust_list = clust_hc_ord_list, pos_lab = -45:45, 
+  xt_freq = 5, set_titles = FALSE, show = FALSE, bits_yax = "auto")
+
+ordered_arch_pl2 <- lapply(rev(ordered_arch_pl), function(pl){
+  pl <- pl + 
+        ggplot2::theme(axis.text = ggplot2::element_text(size = 0), 
+                       axis.text.x = ggplot2::element_text(
+                         angle = 0, vjust = 2, hjust = 0.5),
+                       axis.text.y = ggplot2::element_text(vjust = 0.5),
+                       axis.title.y = ggplot2::element_text(size = 0),
+                       axis.ticks.length = ggplot2::unit(0.00, "cm"),
+                       plot.margin = ggplot2::unit(c(-0.1,0,-0.4,-0.4), "cm"))
+})
+sam_foo <- cowplot::plot_grid(plotlist = ordered_arch_pl2, ncol = 1)
+
+
+
+use_cutk <- 18
+result_dir_path <- file.path(archR_org_results_path,
+                             paste0(sample_names[sn], "_results"))
+stopifnot(check_and_create_dir(result_dir_path))
+fname <- file.path(result_dir_path, paste0(sample_names[sn], "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters"))
+
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname, use_cutk = use_cutk, 
+              clusts = iter5_clusts_reord, 
+              lwd = 0.4, repel = TRUE, show_labels = TRUE, labels_track_height = 0.25,
+              rect = TRUE, rect_fill = TRUE,
+              color_labels_by_k = TRUE, plot_png = FALSE)
+
+
+# sam_foo2
+
+temp_clusts <- cutree(iter5_clusts_reord, k = use_cutk)
+names(temp_clusts) <- NULL
+## Make further few clusters
+nCl <- length(unique(temp_clusts))
+##  singleton clusters == 3, 1, 26, 2
+##  
+temp_clusts[26] <- temp_clusts[13] 
+# ^ this is fine because we are reassigning 13 to another cluster
+temp_clusts[c(13,15,24)] <- temp_clusts[11]
+temp_clusts[2] <- temp_clusts[c(44)] # loose a compelete cluster, hence reassign it
+temp_clusts[c(44)] <- temp_clusts[23]
+temp_clusts[c(40,41)] <- temp_clusts[38]
+temp_clusts[19] <- nCl + 1
+temp_clusts[9] <- nCl + 2
+
+# Re-plot with proper coloring that shows the manipulations in clusters
+use_cutk <- 18
+result_dir_path <- file.path(archR_org_results_path,
+                             paste0(sample_names[sn], "_results"))
+stopifnot(check_and_create_dir(result_dir_path))
+fname2 <- file.path(result_dir_path, paste0(sample_names[sn], "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters_final"))
+
+## Also need to show alongside, how the final clusters' seqlogos look
+clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+seqs_clusters_as_list[[sample_names[sn]]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(dm_2014_result[[sn]]$seqsClustLabels[[itr]]))
+##
+
+use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
+               use_cutk = use_cutk,#length(unique(temp_clusts)), 
+               clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+               label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+               k_colors = use_color, 
+               clust_assignment = clust_list,
+               new_clusts = seqs_clusters_as_list[[sample_names[sn]]],
+               rawSeqs = dm_2014_result[[sample_names[sn]]]$rawSeqs,
+               pos_lab = -45:45,
+               palette = FALSE, plot_png = FALSE)
+
+# sam_foo2
+
+#####
+
+perSample_archR_clusts[[sn]] <- seqs_clusters_as_list[[sn]]
+
+```
+
+We use `r use_aggl` (linkage) with `r use_dist` for sample 1.
+
+
+
+
+
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/>
+
+
+
+
+
+## Sequences as a color image {#seq-image}
+
+```{r seq-image-plot, message=TRUE, fig.align="center", out.width="400px", out.height="1200px"}
+
+if(do_plot_seq_image){
+    for(sn in sample_names){
+        result_dir_path <- file.path(archR_org_results_path, paste0(sn, "_results"))
+        stopifnot(check_and_create_dir(result_dir_path))
+        fname <- file.path(result_dir_path, paste0(sn, "_ClusteringImage.png"))
+        archR::viz_seqs_acgt_mat_from_seqs(
+            as.character(
+      dm_2014_result[[sn]]$rawSeqs[unlist(perSample_archR_clusts[[sn]])]
+              ),
+            pos_lab = -45:45,
+            xt_freq = 5,
+            yt_freq = 300,
+            f_height = 1200, 
+            save_fname = fname, 
+            file_type = "png")
+        #
+        for(sn in sample_names){
+          if(file.exists(fname)){
+              knitr::include_graphics(fname)
+          }
+        }
+    }
+}else{
+    message("do_plot_seq_image is FALSE")
+}
+
+```
+
+
+
+
+## Motif heatmaps {#motif-heatmaps}
+
+```{r motif-heatmaps, fig.width=11, fig.height=8, out.width="1200px", out.height="600px", collapse=TRUE, cache=TRUE}
+
+######## Dinucleotide patterns
+if(do_motif_heatmaps){
+    ###
+    viz_fl_l <- 50 # viz flank upstream
+    viz_fl_r <- 50 # viz flank downstream
+    
+    motifs_list <- c("GAGA","YAGGTAR", "WW", "SS", "CG", "TATAAA")#, "TA", "CG", "TATAA")
+    fname_suffix <- paste0(paste(viz_fl_l, "up", viz_fl_r, "down", 
+                          "motifHeatmaps",paste0(motifs_list, collapse="_"),
+                           sep = "_"), ".png")
+    ###
+    for(sn in sample_names){
+        fastaFname <- file.path(archR_org_data_path,
+                paste0('dm6_samarth_chen_et_al_TC_sample_', sn, 
+                       '_minTPM1_flank_up500_flank_down500.fa'))
+        tss.seqs_raw <- archR::prepare_data_from_FASTA(fastaFname, raw_seq = TRUE)
+        tss.seqs_raw <- Biostrings::subseq(tss.seqs_raw, start=501-100, end=501+200)
+        if(length(perSample_archR_clusts[[sn]]) > 0){
+            message("Processing SAMPLE ", sn)
+            result_dir_path <-file.path(archR_org_results_path, paste0(sn, "_results"))
+            stopifnot(check_and_create_dir(result_dir_path))
+            seq_order <- unlist(perSample_archR_clusts[[sn]])
+            cli::cli_alert_info("Motif heatmaps for {motifs_list}")
+            ## Using the heatmaps package
+            ## Generate a pattern heatmap
+            patt_hm_list500 <- lapply(motifs_list, function(x){
+                    hm <- heatmaps::PatternHeatmap(
+                        seq = tss.seqs_raw[seq_order], pattern = x,
+                        coords = c(-1*viz_fl_l, viz_fl_r), label = x)
+                    heatmaps::smoothHeatmap(hm, sigma=c(2,2))
+                }
+            )
+            nClust <- length(perSample_archR_clusts[[sn]])
+            nClust_colors <- get_ncolors(n=nClust, palname="Set1")
+            fname <- file.path(result_dir_path, fname_suffix)
+            clust_lens <- unlist(lapply(perSample_archR_clusts[[sn]], length))
+            png(fname, height = 20, width = 60, units = "cm", res = 300)
+            pl_hms <- 
+              heatmaps::plotHeatmapList(patt_hm_list500,
+                                        box.width = 1.3,
+                                        cex.label = 1.1,
+                                        cex.axis = 0.7, scale.lwd = 0.5,
+                                        tcl=-0.3, padj=-1.5,
+                                        # plot.mai = c(0.1,0.1,0.1,0.1),
+                                        # groups = 1:length(),
+                                        partition = clust_lens,
+                                        partition.legend = TRUE,
+                                        partition.lines = TRUE,
+                                        partition.col = nClust_colors,
+                                        refline = TRUE,
+                                        legend = TRUE,
+                                        legend.width = 0.3, cex.legend = 0.8,
+                                        legend.pos = "r")
+            dev.off()
+            ##
+            if(file.exists(fname)){
+                knitr::include_graphics(fname)
+            }
+        }else{
+            cli::cli_alert_info("Skipping sample {sn}")
+        }
+    }
+}else{
+    message("do_motif_heatmaps is FALSE")
+}
+
+
+##
+
+```
+
+## Sequence logos of cluster architectures {#arch-seqlogos}
+
+<!-- Sequence logos of clusters ordered by their median interquantile width (ascending order). -->
+
+```{r seqlogos, collapse=TRUE}
+
+#fig.width=11, fig.height=10, out.width="1200px", out.height="800px",
+
+##
+# suffix_label <- c("X", "Y", "Z")
+# names(suffix_label) <- sample_names
+if(do_plot_arch){
+    for(sn in sample_names){
+        
+        result_dir_path <- file.path(archR_org_results_path, paste0(sn, "_results"))
+        stopifnot(check_and_create_dir(result_dir_path))
+        ##
+        message("Generating architectures for clusters of sequences...")
+        fname <- file.path(result_dir_path, paste0("Architectures_0-max.pdf"))
+        iter5_dm_arch_list <- lapply(seq_along(perSample_archR_clusts[[sn]]), 
+        function(y){
+          x <- perSample_archR_clusts[[sn]][[y]]
+          pl <- archR::plot_ggseqlogo_of_seqs(
+            as.character(dm_2014_result[[sn]]$rawSeqs[x]), 
+            pos_lab = -45:45, bits_yax = "auto", title = NULL)
+          pl <- pl + theme_classic() + 
+                     theme(axis.text = element_text(size=80),
+                     axis.text.x = element_text(angle=0, vjust = 0.5, hjust = 0.5),
+                     axis.text.y = element_text(hjust = -5),
+                     # axis.text.y.left = element_text(hjust = -5), 
+                     # axis.text.y.left = element_text(vjust = 0.5, hjust = 1.5), 
+                     axis.title.y = element_text(size=use_txt_size),# axis.line.y.right = element_blank(),
+                     axis.title.y.left = element_text(margin = unit(c(0, 1, 0, 3), "cm")),
+                     axis.title.y.right = element_text(margin = unit(c(0, 0, 0, 3), "cm")),
+                     axis.ticks.length.y.left = unit(0.5, "cm"),
+                     axis.ticks.length.y.right = unit(0.00, "cm"),
+                     axis.ticks.length.x.bottom = unit(0.5, "cm"),
+                     axis.ticks = element_line(size=1),
+                     # plot.margin = unit(c(0,0,0,0), "cm")
+                     plot.margin = unit(c(0,0.1,0,0.4), "cm")
+                     ) +
+            ggplot2::scale_y_continuous(breaks = seq(0, 2, by = 0.5),
+                                        sec.axis = dup_axis(name = paste0("C",y, suffix_label[sn]),
+                                                            labels = NULL))
+            if(y == 1){
+                pl <- pl + theme(plot.margin = unit(c(3,0.1,0,0.4), "cm"))
+            }else{
+                pl <- pl + theme(plot.margin = unit(c(3,0.1,0,0.4), "cm"))
+            }
+          pl
+          # pl <- pl + theme_classic()
+        })
+        # print(length(iter5_dm_arch_list))
+        
+        r1c1 <- cowplot::plot_grid(plotlist = iter5_dm_arch_list, ncol = 1, 
+                                   nrow = length(perSample_archR_clusts[[sn]]))
+        cowplot::save_plot(fname, plot = r1c1, limitsize = FALSE,
+                           base_height = 5, base_width = 45,
+                           ncol = 1,
+                           nrow = length(perSample_archR_clusts[[sn]]),
+                           dpi = 600)
+        # cowplot::ggsave2(fname, plot= r1c1, width=85, height=105, units="cm",
+        #       dpi = 600, limitsize = FALSE)
+        
+        ## save PNGs
+        for(p in 1:length(iter5_dm_arch_list)){
+            this_result_dir_path <- file.path(result_dir_path, "arch_png")
+            stopifnot(check_and_create_dir(this_result_dir_path))
+            fname <- file.path(this_result_dir_path, 
+                    paste0("Architecture_clust", p, "_0-max.png"))
+            cowplot::ggsave2(fname, plot= iter5_dm_arch_list[[p]], 
+              width=15, height=3, units="cm", dpi = 300)
+        }
+        r1c1
+        perSample_arch_combined[[sn]] <- r1c1
+        perSample_arch[[sn]] <- iter5_dm_arch_list
+        
+        if(file.exists(fname)){
+            knitr::include_graphics(fname)
+        }
+    }
+}else{
+    message("do_plot_arch is FALSE")
+}
+##
+
+
+```
+
+
+# Session Info
+
+```{r sessionInfo, echo=FALSE}
+
+sessionInfo()
+
+```
+

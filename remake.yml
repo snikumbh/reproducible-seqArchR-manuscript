@@ -20,6 +20,8 @@ packages:
   - dplyr
   - readr
   - rmarkdown
+  - ggeasy
+  - motifStack
 
 
 sources:
@@ -29,43 +31,78 @@ sources:
 targets:
   all:
     depends:
-      - hs_analysis
-      - hs_add_analysis
-      - dm_analysis
-      - zf_analysis
+      - archR_dm_schor_figures.md
+      - archR_zf_nepal_figures.md
+      - archR_human_figures.md
+      - archR_human_inr_KO_figures.md
+      - archR_human_inr_KO_5_5_figures.md
+      - archR_human_figures_150_downstream.md
+      - seqArchR_manuscript
+      - seqArchR_supplementary
 
   fetch_zenodo_data:
     command: fetch_and_setup_zenodo_data()
 
-  ## Get filenames of additional analysis scripts
-  add_hs_rmd_files:
-    command: get_hs_add_rmd()
-
-  dm_rmd_file:
-    command: get_dm_rmd()
-
-  zf_rmd_file:
-    command: get_zf_rmd()
-
-  hs_rmd_file:
-    command: get_hs_rmd()
-
   ## Main human analysis
-  hs_analysis:
-    depends: fetch_zenodo_data
-    command: run_org_analysis(hs_rmd_file)
+  archR_human_figures.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
 
-  ## Additional human analysis
-  hs_add_analysis:
-    depends: fetch_zenodo_data
-    command: run_org_analysis(add_hs_rmd_files)
+  ## Additional human analysis 1
+  archR_human_figures_150_downstream.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
 
-  ## Drosophila analysis
-  dm_analysis:
-    depends: fetch_zenodo_data
-    command: run_org_analysis(dm_rmd_file)
+  ## Additional human analysis 2
+  archR_human_inr_KO_5_5_figures.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
+
+
+  ## Additional human analysis 3
+  archR_human_inr_KO_figures.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
 
   ## Zebrafish analysis
-  zf_analysis:
-    depends: fetch_zenodo_data
-    command: run_org_analysis(zf_rmd_file)
+  archR_zf_nepal_figures.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
+
+  ## Drosophila analysis
+  archR_dm_schor_figures.md:
+    knitr: true
+    depends:
+      - fetch_zenodo_data
+      - experiments/helper-funcs.R
+
+  seqArchR_manuscript:
+    command: write_article(fname = "manuscript/seqArchR_manuscript.Rmd")
+    depends:
+      - archR_dm_schor_figures.md
+      - archR_zf_nepal_figures.md
+      - archR_human_figures.md
+      - manuscript/seqArchR-bibliography.bib
+      - manuscript/mystyles.sty
+
+  seqArchR_supplementary:
+    command: write_article(fname = "manuscript/seqArchR_supplementary.Rmd")
+    depends:
+      - archR_dm_schor_figures.md
+      - archR_zf_nepal_figures.md
+      - archR_human_figures.md
+      - archR_human_figures_150_downstream.md
+      - archR_human_inr_KO_5_5_figures.md
+      - archR_human_inr_KO_figures.md
+      - manuscript/seqArchR-bibliography.bib
+      - manuscript/mystyles.sty

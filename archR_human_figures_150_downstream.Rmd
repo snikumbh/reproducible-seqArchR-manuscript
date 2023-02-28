@@ -1,0 +1,507 @@
+---
+author: "Sarvesh Nikumbh"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+title: "archR result analysis report for CTSS in Human (150 downstream)"
+output: 
+  bookdown::html_document2:
+    toc: true
+    toc_float: true
+    number_sections: true
+    anchor_sections: true
+    number_tables: true
+  editor_options:
+    chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse=TRUE)
+
+data_path <- file.path("experiments", "data")
+results_path <- file.path("experiments", "results")
+
+## Setup paths on disk
+data_path_on_disk <- data_path
+result_path_on_disk <- results_path
+##
+archR_org_data_path <- file.path(data_path, "human")
+use_minTPM <- 1
+archR_org_results_path <- file.path(results_path, "human")
+
+
+##
+# sample_name <- params$sample_name
+# result_dir_path <- file.path(params$result_path_on_disk, params$result_dir_name)
+# reordered <- params$reordered
+# dist_method <- params$dist_method
+# linkage <- params$linkage
+# topN_val <- params$topN_val
+# regularize_choice <- params$regularize
+# iteration <- params$archR_iteration
+# iqw_order_by_median <- params$iqw_order_by_median
+
+
+
+#####
+do_plot_seq_image <- TRUE
+do_plot_arch <- TRUE
+do_IQW_TPM_plots <- TRUE
+do_bedfile_write <- TRUE
+iqw_order_by_median <- TRUE
+
+```
+
+This CAGE data was obtained from ENCODE and processed by merging all cell lines 
+data.
+
+# Sample: `human_cellGroup_merged`
+
+This file produces additional analyses plots for sample "human_cellGroup_merged" 
+for condition upstream 50 and downstream 150 flanks.
+
+
+```{r library, echo=FALSE, include=FALSE, message=FALSE}
+seed_val <- 11992288
+set.seed(seed_val)
+
+
+library(CAGEr)                       # Bioconductor v2.3.0
+library(readr)                       # CRAN v2.1.3
+library(reshape2)                    # CRAN v1.4.4
+library(ggplot2)                     # CRAN v3.4.0
+library(ggeasy)                      # CRAN v0.1.3
+# library(forcats)
+library(patchwork)                   # CRAN v1.1.2
+library(cowplot)                     # CRAN v1.1.1
+## ^ for plotting
+
+library(ChIPseeker)                  # Bioconductor v1.34.1
+library(BSgenome.Hsapiens.UCSC.hg19) # Bioconductor v1.4.3
+# Use this to create one
+library(GenomicFeatures)             # Bioconductor v1.50.2
+TxDb.Hsapiens.UCSC.hg19.ensGene <- GenomicFeatures::makeTxDbFromUCSC(
+                                    genome = "hg19", tablename = "ensGene")
+# library(TxDb.Hsapiens.UCSC.hg19.knownGene) 
+## ensGene is to be re-installed for R-4.0.0, but BiocManager says that it 
+## is not available for this version of R
+library(org.Hs.eg.db)                # Bioconductor v3.16.0
+library(dendextend)                  # CRAN v1.16.0
+
+
+```
+
+
+
+
+
+## Plots for sections marked TRUE are included in this report.
+
+```{r all_funcs, include=FALSE}
+
+
+# source('helper-funcs.R')
+
+```
+
+
+```{r setup-variables}
+
+sample_names <- c("human_cellGroup_merged")
+
+archR_human_best_run <- vector("list", length(sample_names))
+names(archR_human_best_run) <- sample_names
+
+human_result <- vector("list", length(sample_names))
+names(human_result) <- sample_names
+
+human_bed_info <- vector("list", length(sample_names))
+names(human_bed_info) <- sample_names
+
+seqs_clusters_as_list <- vector("list", length(sample_names))
+names(seqs_clusters_as_list) <- sample_names
+
+seqs_clusters_as_list_ordered <- vector("list", length(sample_names))
+names(seqs_clusters_as_list_ordered) <- sample_names
+
+perSample_CAGEobj <- vector("list", length(sample_names))
+names(perSample_CAGEobj) <- sample_names
+
+perSample_peakAnno <- vector("list", length(sample_names))
+names(perSample_peakAnno) <- sample_names
+
+perSample_tissueSpec_pl <- vector("list", length(sample_names))
+names(perSample_tissueSpec_pl) <- sample_names
+
+samarth_df <- vector("list", length(sample_names))
+names(samarth_df) <- sample_names
+##
+
+
+##
+## lists storing plots
+## 
+## store iqw+tpm plots
+perSample_pl <- vector("list", length(sample_names)) 
+names(perSample_pl) <- sample_names
+
+
+## store result_directory path
+result_dir_path <- vector("list", length(sample_names)) 
+names(result_dir_path) <- sample_names
+
+
+
+## store clusters
+perSample_archR_clusts <- vector("list", length(sample_names))
+names(perSample_archR_clusts) <- sample_names
+
+
+
+################################################################################
+## Per section some variables need to be set. These are done here
+
+
+## CAGEr object processing
+
+
+# read TagClusters information from corresponding RDS file for sample
+# All samples in one RDS object
+cager_obj <- file.path(archR_org_data_path, 
+                       paste0("samarth_hsapiens_TC_sample_human_cellGroup_merged_",
+                       "minTPM", use_minTPM,
+                       "_flank_up500_flank_down500_all70.rds"))
+
+ok_chr_names <- paste0("chr", c(1:21, "X", "Y"))
+
+for(sn in sample_names){
+    result_dir_path[[sn]] <- file.path(archR_org_results_path, 
+                                       paste0(sn, "150_downstream_results"))
+}
+
+
+```
+
+```{r read-result-and-TCbed}
+
+
+
+for(sn in sample_names){
+    archR_human_best_run[[sn]] <- 
+    file.path(archR_org_results_path, 
+        paste0("archR_result_hsapiens_", sn,
+               "_flank_up50_flank_down150_",
+               "_modSelType_stability_chunkSize_5000", 
+               "_bound_1e-06_collate_FTTTF"))
+    if(file.exists(archR_human_best_run[[sn]])){
+    human_result[[sn]] <- readRDS(file.path(archR_human_best_run[[sn]],
+                                          "archRresult.rds"))
+    }else{
+        stop("Check if file exists. ", archR_human_best_run[[sn]])
+    }
+    ## Bed Info -- IQW and dominant TPM values 
+    bed_fname <- file.path(archR_org_data_path, paste0("samarth_hsapiens_TC_sample_", sn, 
+                                                   paste0("_minTPM", use_minTPM, "_all70"),
+                                                   ".bed"))
+    print(bed_fname)
+    
+    human_bed_info[[sn]] <- read.delim(file = bed_fname,
+                          sep = "\t", header = TRUE)
+    colnames(human_bed_info[[sn]]) <- c("chr", "start", "end", 
+                                                    "IQW", "domTPM", "strand")
+    ##
+    message("Size of bed_info: ", nrow(human_bed_info[[sn]]))
+}
+
+```
+
+For annotation, TSS region considered is -500 upstream and 100 nt downstream.
+
+```{r make-cager-obj, echo=FALSE, collapse=TRUE}
+
+# read TagClusters information from corresponding RDS file for sample
+# All samples in one object
+
+myCAGEobject <- readRDS(cager_obj)
+
+## Per sample TCs
+for(sn in sample_names){
+      message("SAMPLE: ", sn)
+      
+      stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+      gr_CAGEobj_perSample_fname <- file.path(result_dir_path[[sn]], 
+                                    paste("cagerObj", sn, "gr.rds", sep="_"))
+      cage_sn <- paste0(sn)
+      if(!file.exists(gr_CAGEobj_perSample_fname)){
+          cli::cli_alert_info("Preparing new GRanges obj from CAGEr object")
+      
+      gr_myCAGEobject_thisSample <- GRanges(myCAGEobject)
+  
+      seqlengths(gr_myCAGEobject_thisSample) <- seqlengths(BSgenome.Hsapiens.UCSC.hg19)[names(seqlengths(gr_myCAGEobject_thisSample))]
+      
+      gr_myCAGEobject_thisSample <- trim(gr_myCAGEobject_thisSample)
+      
+      saveRDS(file = gr_CAGEobj_perSample_fname, 
+                object = gr_myCAGEobject_thisSample)
+    }else{
+        cli::cli_alert_info("Using saved GRanges obj from CAGEr object")
+        gr_myCAGEobject_thisSample <- readRDS(gr_CAGEobj_perSample_fname)
+    }
+    perSample_CAGEobj[[sn]] <- gr_myCAGEobject_thisSample
+    perSample_peakAnno[[sn]] <- ChIPseeker::annotatePeak(gr_myCAGEobject_thisSample,
+                                         tssRegion=c(-500, 100),
+                                         TxDb=TxDb.Hsapiens.UCSC.hg19.ensGene,
+                                         annoDb="org.Hs.eg.db")
+
+}
+
+
+
+
+
+
+```
+
+## Order archR clusters by median IQ width {#prepare-objects}
+
+By default, the clusters are ordered by their _median_ interquantile widths. 
+One can choose to order by the _mean_ interquantile widths by setting paramater _iqw_order_by_median_ to `r FALSE`.
+
+
+### ENCODE CAGE in Hsapiens cellGroup merged
+
+When considering a downstream flank of 150 instead of just 5, the number of 
+clusters are drastically fewer in the raw result. 
+
+
+```{r prepare-clusters-0}
+
+## Sample 1, human_cellGroup_merged
+sn <- 1
+itr <- 5
+use_aggl <- 'ward.D'
+use_dist <- 'cor'
+
+iter5_clusts_reord <- archR::collate_archR_result(
+  result = human_result[[sn]],
+  iter = itr, clust_method = 'hc', aggl_method = use_aggl,
+  dist_method = use_dist, regularize = TRUE, topn = 50,
+  flag = list(debugFlag = FALSE, verboseFlag = TRUE), collate = FALSE,
+  return_order = TRUE)
+
+
+## these are in default archR ordering
+clust_archR_ord_list <- archR::get_seqs_clust_list(
+  seqs_clust_lab = human_result[[ sn ]]$seqsClustLabels[[itr]])
+
+## these are now ordered by the hc ordering
+clust_hc_ord_list <- lapply(iter5_clusts_reord$order, function(x){
+  clust_archR_ord_list[[x]]
+})
+
+
+ordered_arch_pl <- archR::plot_arch_for_clusters(
+  seqs = human_result[[ sn ]]$rawSeqs,
+  clust_list = clust_hc_ord_list, pos_lab = -50:150,
+  xt_freq = 5, set_titles = FALSE, show = FALSE, bits_yax = "auto")
+
+ordered_arch_pl2 <- lapply(rev(ordered_arch_pl), function(pl){
+  pl <- pl +
+        ggplot2::theme(axis.text = ggplot2::element_text(size = 0),
+                       axis.text.x = ggplot2::element_text(
+                         angle = 0, vjust = 2, hjust = 0.5),
+                       axis.text.y = ggplot2::element_text(vjust = 0.5),
+                       axis.title.y = ggplot2::element_text(size = 0),
+                       axis.ticks.length = ggplot2::unit(0.00, "cm"),
+                       plot.margin = ggplot2::unit(c(-0.1,0,-0.4,-0.4), "cm"))
+})
+sam_foo <- cowplot::plot_grid(plotlist = ordered_arch_pl2, ncol = 1)
+
+use_cutk <- 21
+# result_dir_path <- file.path(archR_org_results_path,
+#                              paste0(sample_names[sn], "_results"))
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname <- file.path(result_dir_path[[sn]], paste0(sample_names[sn], "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters"))
+
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname, use_cutk = use_cutk,
+              clusts = iter5_clusts_reord, use_ht = 30, plot_png = FALSE, 
+              lwd = 0.4, repel = TRUE, show_labels = TRUE, labels_track_height = 0.25,
+              rect = TRUE, rect_fill = TRUE,
+              color_labels_by_k = TRUE)
+
+
+temp_clusts <- cutree(iter5_clusts_reord, k = use_cutk)
+names(temp_clusts) <- NULL
+# ## Make further few clusters -- NOt needed
+# nCl <- length(unique(temp_clusts))
+# 
+# # TATA architectures
+# temp_clusts[c(34)] <- nCl + 1
+# temp_clusts[c(33)] <- nCl + 2
+# temp_clusts[c(35)] <- nCl + 3
+# temp_clusts[c(26)] <- nCl + 4
+# 
+# # TCT architecture
+# temp_clusts[c(37)] <- nCl + 5
+# 
+# temp_clusts[c(31)] <- nCl + 6
+# temp_clusts[c(36)] <- nCl + 6
+# 
+# temp_clusts[c(17)] <- temp_clusts[c(13)]
+
+# Re-plot with proper coloring that shows the manipulations in clusters
+use_cutk <- 21
+# result_dir_path <- file.path(archR_org_results_path,
+#                              paste0(sample_names[sn], "_results"))
+stopifnot(check_and_create_dir(result_dir_path[[sn]]))
+fname2 <- file.path(result_dir_path[[sn]], paste0(sample_names[sn], "_dend_arch_list_",
+                                           use_dist, "_", use_aggl, "_",
+                                           use_cutk, "clusters_final"))
+
+
+## Also need to show alongside, how the final clusters' seqlogos look
+clust_list <- lapply(unique(temp_clusts), function(x){which(temp_clusts == x)})
+seqs_clusters_as_list[[sample_names[sn]]] <- archR::collate_clusters(clust_list, archR::get_seqs_clust_list(human_result[[sn]]$seqsClustLabels[[itr]]))
+##
+
+use_color <- scales::hue_pal()(length(unique(temp_clusts)))
+sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 30,
+               use_cutk = use_cutk,#length(unique(temp_clusts)), 
+               clusts = iter5_clusts_reord, rect = TRUE, rect_fill = TRUE,
+               label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
+               k_colors = use_color, 
+               clust_assignment = clust_list,
+               new_clusts = seqs_clusters_as_list[[sample_names[sn]]],
+               rawSeqs = human_result[[sample_names[sn]]]$rawSeqs,
+               palette = FALSE, plot_png = FALSE)
+
+
+
+cluster_medians_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    median(human_bed_info[[sn]]$IQW[x])
+}))
+cluster_means_IQW <- unlist(lapply(seqs_clusters_as_list[[sn]], function(x){
+    mean(human_bed_info[[sn]]$IQW[x])
+}))
+
+if(iqw_order_by_median){
+    ascending_order_IQW <- sort(cluster_medians_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}else{
+    ascending_order_IQW <- sort(cluster_means_IQW, decreasing = FALSE,
+                            index.return = TRUE)
+}
+##
+seqs_clusters_as_list_ordered[[sn]] <-
+                      lapply(ascending_order_IQW$ix,
+                              function(x){
+                                  seqs_clusters_as_list[[sn]][[x]]
+                              })
+
+perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
+
+
+```
+
+
+
+
+```{r make-df-from-bed}
+
+## Using Tau as a measure of tissue specificity
+## This measure is defined/used in this paper:
+##  https://www.aging-us.com/article/202648/text
+## Various tissue specificity measures have been reviewed in this paper:
+## https://doi.org/10.1093/bib/bbw008
+## The above benchmarking paper finds Tau to be the most robust and sensitive 
+## measure of tissue specificity. 
+## 
+tissueSpecTau <- read_csv(file.path(data_path, "tissueSpecificity-tau", 
+                                    "Tau_score", "Tau_gene_V8.csv"), 
+                          col_names = TRUE, show_col_types = FALSE)
+
+
+tau_dist <- ggpubr::gghistogram(tissueSpecTau, x = "tau", title = "Tau distribution/all genes (ensembl ids); N = 56156")
+ggplot2::ggsave(file.path(result_dir_path[[sn]], "tau_distribution.pdf"), plot = tau_dist, device = "pdf", width = 6, height = 4)
+
+for(sn in sample_names) {
+    clust_lens <- unlist(lapply(seqs_clusters_as_list_ordered[[sn]], length))
+    message("Ordered list lengths: ", paste(clust_lens, collapse = " "))
+    message("Original list lengths:", 
+      paste(unlist(lapply(seqs_clusters_as_list[[sn]], length)), collapse = " "))
+  
+  
+    ##
+    clust_lab <- rep("0", length(human_result[[sn]]$rawSeqs))
+    clust_names <- sort(as.character(1:length(seqs_clusters_as_list_ordered[[sn]])))
+    for(i in seq_along(seqs_clusters_as_list_ordered[[sn]])){
+        clust_lab[seqs_clusters_as_list_ordered[[sn]][[i]] ] <- clust_names[i]
+    }
+  
+    peakAnno_df <- as.data.frame(perSample_peakAnno[[sn]])
+    
+    
+    
+    tissSpecScores <- vapply(seq(nrow(peakAnno_df)), FUN = function(x){
+        idx <- which(tissueSpecTau$gene_id == peakAnno_df[x, "geneId"])
+        if(length(idx) < 1){
+            return(-1)
+        }
+        return(tissueSpecTau$tau[idx])
+        }, FUN.VALUE=numeric(1))
+    
+    message("Tissue specificity values (tau) collected")
+    
+    
+    
+    
+    
+    ### Get DF ob BED information
+    samarth_df[[sn]] <- data.frame(chr = human_bed_info[[sn]]$chr, 
+                             start = human_bed_info[[sn]]$start,
+                             end = human_bed_info[[sn]]$end,
+                             strand = human_bed_info[[sn]]$strand,
+                             IQW = human_bed_info[[sn]]$IQW,
+                             domTPM = human_bed_info[[sn]]$domTPM,
+                             geneId = peakAnno_df$geneId,
+                             tissueSpecScore = tissSpecScores,
+                             clust_ID = clust_lab #these are character sorted
+                             )
+    
+    df_fname <- file.path(result_dir_path[[sn]], "samarth_info_df.csv")
+    write.csv(samarth_df, file = df_fname)
+    
+    ## All, includes repeated ones
+    fname <- file.path(result_dir_path[[sn]], "tau_existing_all_genes_distribution.pdf")
+    p1 <- ggpubr::gghistogram(data.frame(tissSpecScores = tissSpecScores), 
+                        x = "tissSpecScores",  y = "..count..")
+    ggplot2::ggsave(filename = fname, plot = p1, device = pdf, width = 6, height = 4)
+    
+    ## Just for the 4th cluster which looks like TATA-box
+    fname <- file.path(result_dir_path[[sn]], "tau_clust_4_distribution.pdf")
+    p1 <- ggpubr::gghistogram(
+        data.frame(tissSpecScores_clust4 = tissSpecScores[perSample_archR_clusts[[1]][[4]]]), 
+        x = "tissSpecScores_clust4", y = "..count..")
+    ggplot2::ggsave(filename = fname, plot = p1, device = pdf, width = 6, height = 4)
+    
+    
+}
+
+
+
+```
+
+
+
+
+
+
+# Session Info
+
+```{r sessionInfo, echo=FALSE}
+
+sessionInfo()
+
+```

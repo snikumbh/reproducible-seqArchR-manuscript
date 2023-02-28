@@ -35,10 +35,25 @@ Below is the detailed explanation of the folder structure and files.
 - experiments
 - manuscript
 - remake-helper-funcs.R
+- remake.yml
+  (Rmd files: analysis/figures-related)
+- archR_dm_schor_figures.Rmd
+- archR_zf_nepal_figures.Rmd
+- archR_human_figures.Rmd
+- archR_human_figures_150_downstream.Rmd
+- archR_human_figures_inr_KO_5_5_figures.Rmd
+- archR_human_figures_inr_KO_figures.Rmd
+  (Md files: Corresponding output of Rmd)
+- archR_dm_schor_figures.md
+- archR_zf_nepal_figures.md
+- archR_human_figures.md
+- archR_human_figures_150_downstream.md
+- archR_human_figures_inr_KO_5_5_figures.md
+- archR_human_figures_inr_KO_figures.md
 ```
 
 All manuscript related files are available under folder `manuscript`, and all
-experiments-related files (including analysis figures) are available under
+experiments-related files (including generated figures) are available under
 `experiments`. See additional details.
 
 
@@ -88,14 +103,6 @@ experiments-related files (including analysis figures) are available under
     - run_archR_zebrafish_nepal2012.sh
     - run_archR_simdata.sh
     - NPLB.sh
-    
-      (Analysis/figures scripts)
-    - archR_dm_schor_figures.Rmd
-    - archR_zf_nepal_figures.Rmd
-    - archR_human_figures.Rmd
-    - archR_human_figures_150_downstream.Rmd
-    - archR_human_figures_inr_KO_5_5_figures.Rmd
-    - archR_human_figures_inr_KO_figures.Rmd
 ```
 
 All figures for the paper can be generated using the
@@ -112,6 +119,8 @@ our end) that will not work at your end.
 - manuscript
     - seqArchR_manuscript_GenomeBiology.Rmd
     - seqArchR_supplementary.Rmd
+    - seqArchR-bibliography.bib
+    - mystyles.sty
 ```
 
 Some figures are generated directly in the manuscript Rmd file.

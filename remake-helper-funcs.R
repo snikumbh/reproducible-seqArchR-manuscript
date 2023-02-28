@@ -41,3 +41,20 @@ run_org_analysis <- function(fname){
     }
 
 }
+
+
+write_article <- function(fname){
+    message("Building: ", fname)
+
+    if(!is.null(fname)){
+        for(fn in fname){
+            rmarkdown::render(input = file.path(fn))
+        }
+    }else{
+        message("No filename provided.")
+    }
+
+}
+
+
+
