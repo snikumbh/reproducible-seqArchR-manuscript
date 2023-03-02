@@ -1360,12 +1360,10 @@ In comparison, cluster C11Z, the broadest among all clusters at the Prim-6 stage
 exhibits a 10 bp periodicity in dinucleotide `WW`.
 This periodicity is known to be an intrinsic property of promoters with a 
 well positioned `+1` nucleosome downstream following the nucleosome free 
-region (NFR) spanning the  promoter [@dreos2016influence].
+region (NFR) spanning the  promoter [@dreos2016influence; @baranasic2022multiomic].
 This is characteristic of broad promoter architectures where the downstream 
 nucleosome creates a so called `catchment' area for transcription initiation 
 [@haberle2016promoter]. 
-As recently reported (Baranasic et al., 2022), the chromatin organisation of 
-promoters between 30%-Epiboly/Dome and Prim-6 stages remains robust.
 
 
 #### Functional specialisation of clusters
@@ -1428,6 +1426,9 @@ stage.
 By Prim-6 stage, about half of the promoter sequences harbour the 
 architecture where dispersed transcription initiation is orchestrated by the 
 first downstream nucleosome (C10Z).
+@baranasic2022multiomic also reported that the chromatin organisation of 
+promoters between 30%-Epiboly/Dome and Prim-6 stages remains robust.
+
 
 
 
@@ -1682,22 +1683,23 @@ obtained from @schor2017promoter.
 Out of different strains/samples available, sample 'RAL_28' was randomly chosen.
 CAGE data for three transitions in embryonic development, namely 2-4h, 6-8h and
 10-12h after egg laying, 
-was processed using CAGEr v2.0.2. See [this](link here) Rmarkdown document for 
-more details.
+was processed using CAGEr v2.0.2. See 
+[this](https://github.com/snikumbh/reproducible-seqArchR-manuscript/blob/main/archR_dm_schor_figures.Rmd) 
+Rmarkdown document for more details.
 
 CAGE data for the embryonic developmental stages in Zebrafish were obtained 
 from @nepal2013dynamic. 
 Out of all stages ranging over maternal to zygotic transition, we selected 
 three, namely 64 cells, 30% Epiboly or Dome, and Prim-6 for this study.
-These were processed using CAGEr v1.20. See [this](link here) Rmarkdown 
-document for more details.
+These were processed using CAGEr v1.20. See 
+[this](https://github.com/snikumbh/reproducible-seqArchR-manuscript/blob/main/archR_zf_nepal_figures.Rmd) 
+Rmarkdown document for more details.
 
 For Homo sapiens, all cell lines-specific CAGE data was obtained from ENCODE 
 consortium which was made available previously as an R package 
 `ENCODEprojectCAGE_1.0.1.tar.gz` available at [http://promshift.genereg.net/CAGEr/PackageSource/](http://promshift.genereg.net/CAGEr/PackageSource/).
-For this study, data from all cell lines was merged and processed as described 
-in [this](link here) 
-Rmarkdown document.
+For this study, data from all cell lines was merged and processed using CAGEr 
+v1.20.
 Library sizes of all cell lines that are included are shown in Supplementary 
 Figure 4.
 
@@ -1710,6 +1712,7 @@ A value closer to zero indicates equally expressed across included tissues in
 the GTEx data and a value closer to $1$ indicates expressed in one tissue.
 
 The list of dual initiation promoters in humans was obtained from @nepal2020dual.
+
 
 
 # Methods {#methods}
@@ -1821,17 +1824,14 @@ These *chunks* are of a pre-defined size that can be set by the user (parameter:
             The effective number of iterations thus performed is `r 5*500` per value of $k$.
         
         The stability-based model selection procedure is the recommended approach
-        <!-- for aligned sequences [Note: keep this bit if the paper discusses both aliigned and non-aligned seqs, aligned as in aligned by the TSS position] -->
         since it is faster owing to the smaller number of bootstrapped runs required per value of $k$.
         
-        <!-- (TODO: If we show results on chip-seq data, we can refer to it here.)  -->
+        
         
 
     (b) **Obtaining clusters:** 
         We then obtain the final NMF solution from multiple runs using the chosen number of basis vectors.
-        <!-- We use scikit-learn module in Python for solving NMF.  -->
         We use the coordinate descent solver [@cdsolver2009] with Nonnegative Double Singular Value Decomposition (NNDSVD) initialisation [@nndsvd2008] which encourages sparsity.
-        <!-- We also employed $\ell 1$-regularisation. (With the regularisation parameter set to 'None', setting L1 regularisation doesn't work. But in the current version we are not using this.) -->
         Matrices $W$ and $H$ from the run achieving the best re-construction accuracy are collected.
         The set of sequences in the *inner chunk* is then partitioned into as many clusters as the number of basis vectors using the coefficients in matrix $H$ (Eq. \@ref(eq:nmf)).
         Each sequence is added to the cluster corresponding to the basis vector for which it has the highest coefficient.
@@ -1844,15 +1844,6 @@ These *chunks* are of a pre-defined size that can be set by the user (parameter:
         seqArchR detects such cases by default and controls for them by re-merging them with the parent cluster.
         For example, if a (parent) cluster is divided into three clusters of which the second is adjudged as an overfit cluster, it is merged back into the first 
         (considered as the parent) of the three clusters.
-        <!-- (`TO-DO`: We may have to explain why re-merged with the first cluster.) -->
-        <!-- (`TO-DO`: Here it will be important to show that an overfit cluster can occur in between, and that it does not necessarily occur always at the end, i.e., third of three clusters or fifth of five clusters.) -->
-        <!-- (`TO-DO`: Showing an example will really help to clearly put forth both the above points.) -->
-        
-         <!-- Because one bound value is used for each chunk, it may be stringent in case of one chunk but lenient in case of another. -->
-         <!-- A basis vector which explains too many features of too few sequences is identified.  --> 
-        <!-- As a result, in addition to the selected few sequences that get assigned relatively very high coefficients, some other sequences get assigned coefficients  -->
-        <!-- and consequently artificially/erroneously assigning higher coefficients to sequences which -->
-        
 
 
 3.  **Collate similar clusters (if any) from different inner chunks.** Among the clusters obtained from the various *inner* chunks, we collate those that are similar into one.
@@ -1861,9 +1852,6 @@ These *chunks* are of a pre-defined size that can be set by the user (parameter:
     One set of choices here are applicable for all iterations.
     
     Based on various computational experiments, we recommend using ward.D linkage with Euclidean or correlation distance.
-    <!-- Euclidean distance and ward.D linkage have been found to work best when architectures have motifs as in Drosophila promoter sequences (`TODO`: ref appropriate results subsection). -->
-    <!-- When the architectures are characterized by stretches of sequence profiles, e.g., `GC`-richness, correlation and complete linkage work better.  -->
-    <!-- The second combination is used by default in the package. -->
     Note that using any combination of distance and agglomeration method only affects collation of clusters and does not affect per-chunk cluster/architecture identification by NMF.
      
 
@@ -1923,7 +1911,6 @@ agglomeration method, programmatic collation of basis vectors with hierarchical
 clustering can sometimes combine clusters which are perhaps better off separate. 
 Indeed many studies require some manual curation when combining position weight 
 matrices (PWMs) with hierarchical clustering [@rsatpaper] 
-(`TODO`: any other paper to cite?).
 Therefore, we recommend that the clusters from the last iteration be left 
 uncollated (by appropriately setting the parameter `'set_ocollation'` to `FALSE` 
 for the last iteration).
@@ -2037,10 +2024,13 @@ clusters.
 
 
 ## Method Availability
-seqArchR is made available as an R package with a GNU General Public License 
-version 3 (GPL-3).
-The website documenting the package is accessible at <https://snikumbh.github.io/seqArchR> 
-and the source code at <https://github.com/snikumbh/seqArchR>.
+seqArchR is made available as an R/Bioconductor package with a GNU General 
+Public License version 3 (GPL-3).
+It can be accessed at: 
+[http://www.bioconductor.org/packages/seqArchR](http://www.bioconductor.org/packages/seqArchR)
+The website documenting the package is also accessible at 
+<https://snikumbh.github.io/seqArchR> and the source code at 
+<https://github.com/snikumbh/seqArchR>.
 seqArchR was previously named archR (version 0.1.8).
 This is also the version used for experiments and results reported in this 
 manuscript.
@@ -2049,6 +2039,12 @@ It is deposited at Zenodo with DOI
 [@sarvesh_nikumbh_2021_5055408].
 Following version 0.1.8, there have been no changes to the algorithm.
 
+Source code for all analyses and figures is available at: 
+[https://github.com/snikumbh/reproducible-seqArchR-manuscript](https://github.com/snikumbh/reproducible-seqArchR-manuscript)
+
+## Data Availability
+All data for reproducing results in this manuscript is deposited at Zenodo with 
+DOI [10.5281/zenodo.7692742](https://doi.org/10.5281/zenodo.7692742)
 
 # Acknowledgements {.unlisted .unnumbered}
 
