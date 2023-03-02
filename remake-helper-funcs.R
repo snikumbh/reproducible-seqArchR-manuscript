@@ -15,9 +15,9 @@ fetch_and_setup_zenodo_data <- function(){
                 url_suffix <- "?download=1"
                 src_urls <- paste0(url_prefix, fbasenames, url_suffix)
                 dest_fnames <- file.path("experiments", fbasenames)
-                # utils::download.file(url = src_urls, destfile = dest_fnames,
-                #     method = "wget")
-                # utils::untar(dest_fnames, exdir = "experiments")
+                utils::download.file(url = src_urls, destfile = dest_fnames,
+                    method = "wget")
+                utils::untar(dest_fnames, exdir = "experiments")
 
             }else{
                 message("Required supporting data exists: ", x)
