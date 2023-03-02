@@ -10,6 +10,11 @@
 - *Github link:* https://github.com/snikumbh/seqArchR
 - *Zenodo link:* https://doi.org/10.5281/zenodo.5003648
 
+**seqArchR manuscript supporting data links**
+- *Zenodo link:* https://doi.org/10.5281/zenodo.7692742
+
+
+
 1. `git clone` this repository
 
 2. This is a `remake`-based reproducible pipeline
