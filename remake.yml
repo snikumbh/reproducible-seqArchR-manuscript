@@ -78,6 +78,7 @@ targets:
     depends:
       - fetch_zenodo_data
       - experiments/helper-funcs.R
+      - experiments/handle_zf_annotations.R
 
   ## Drosophila analysis
   archR_dm_schor_figures.md:
@@ -85,6 +86,7 @@ targets:
     depends:
       - fetch_zenodo_data
       - experiments/helper-funcs.R
+      - experiments/handle_dm_annotations.R
 
   seqArchR_manuscript:
     command: write_article(fname = "manuscript/seqArchR_manuscript.Rmd")

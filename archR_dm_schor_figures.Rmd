@@ -1796,18 +1796,18 @@ if(do_IQW_TPM_plots){
                                 samarth_df = samarth_df[[sn]], 
                                 seqs_clust = perSample_archR_clusts[[sn]], 
                                 use_suffix = suffix_label[sn])
-        pl_iqw <- pl_iqw + ggplot2::ggtitle(label = "Interquantile Width") + 
-            ggplot2::theme(plot.title = element_text(hjust = 0.5, 
-                                                    size = use_txt_size))
+        pl_iqw <- pl_iqw + ggplot2::ggtitle(label = "Interquantile\nWidth") + 
+            ggplot2::theme(plot.title = element_text(hjust = 0.5,
+                                                    size = 20+use_txt_size))
         ##
         pl_tpm <- get_iqw_ord_plot(tpm = TRUE, y_axis_text = FALSE,
                                    use_notch = FALSE, text_size = use_txt_size,
                     samarth_df = samarth_df[[sn]], 
                     seqs_clust = perSample_archR_clusts[[sn]], 
                     use_suffix = suffix_label[sn])
-        pl_tpm <- pl_tpm + ggplot2::ggtitle(label = "Expression Level") + 
+        pl_tpm <- pl_tpm + ggplot2::ggtitle(label = "Expression\nLevel") + 
             ggplot2::theme(plot.title = element_text(hjust = 0.5, 
-                                                    size = use_txt_size))
+                                                    size = 20+use_txt_size))
         ##
         pl_phast <- get_iqw_ord_plot(phast = TRUE, y_axis_text = FALSE, 
                                      use_notch = FALSE, text_size = use_txt_size,
@@ -1816,7 +1816,7 @@ if(do_IQW_TPM_plots){
                     use_suffix = suffix_label[sn])
         pl_phast <- pl_phast + ggplot2::ggtitle(label = "Conservation") + 
             ggplot2::theme(plot.title = element_text(hjust = 0.5, 
-                                                    size = use_txt_size))
+                                                    size = 20+use_txt_size))
         ## IQW ordered plots
         iqw_tpm_ord_pls <- pl_iqw | pl_tpm
         

@@ -445,7 +445,7 @@ sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
                k_colors = use_color, 
                clust_assignment = clust_list[ascending_order_IQW$ix], 
-               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               new_clusts = seqs_clusters_as_list_ordered[[sn]],
                rawSeqs = zf_2013_result[[sn]]$rawSeqs,
                palette = FALSE, plot_png = FALSE)
 
@@ -598,7 +598,7 @@ sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
                k_colors = use_color, 
                clust_assignment = clust_list[ascending_order_IQW$ix], 
-               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               new_clusts = seqs_clusters_as_list_ordered[[sn]],
                rawSeqs = zf_2013_result[[sn]]$rawSeqs,
                palette = FALSE, plot_png = FALSE)
 
@@ -725,14 +725,19 @@ sam_foo2 <- plot_dend_arch(arch_plot = sam_foo, fname = fname2, use_ht = 60,
                label_cols = use_color[temp_clusts[iter5_clusts_reord$order]],
                k_colors = use_color, 
                clust_assignment = clust_list[ascending_order_IQW$ix], 
-               new_clusts = seqs_clusters_as_list_ordered[[sample_names[sn]]],
+               new_clusts = seqs_clusters_as_list_ordered[[sn]],
                rawSeqs = zf_2013_result[[sn]]$rawSeqs,
                palette = FALSE, plot_png = FALSE)
 
 
 ###
 
-
+## Write sub-sequences to disk showing W signal for nucleosome phasing
+clust_list <- seqs_clusters_as_list_ordered[[sn]]
+nuc_phas_seq <- zf_2013_result[[sn]]$rawSeqs[clust_list[[10]]]
+nuc_phas_subseq <- Biostrings::subseq(nuc_phas_seq, start = 91, end = 196)
+Biostrings::writeXStringSet(x = nuc_phas_subseq, 
+                filepath = file.path(result_dir_path[[sn]], "nuc_pos_periodicity_subsequences.fa"))
 
 perSample_archR_clusts[[sn]] <- seqs_clusters_as_list_ordered[[sn]]
 
@@ -1373,17 +1378,17 @@ if(do_IQW_TPM_plots){
                     samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
                     seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
                     use_suffix = suffix_label[sn], use_notch = FALSE)
-        pl_iqw <- pl_iqw + ggplot2::ggtitle(label = "Interquantile Width") + 
+        pl_iqw <- pl_iqw + ggplot2::ggtitle(label = "Interquantile\nWidth") + 
             ggplot2::theme(plot.title = element_text(hjust = 0.5, 
-                                                    size = use_txt_size))
+                                                    size = use_axis_title_size))
         ##
         pl_tpm <- get_iqw_ord_plot(tpm = TRUE, y_axis_text = FALSE, 
                     samarth_df = samarth_df[[sn]], text_size = use_axis_title_size,
                     seqs_clust = seqs_clusters_as_list_ordered[[sn]], 
                     use_suffix = suffix_label[sn], use_notch = FALSE)
-        pl_tpm <- pl_tpm + ggplot2::ggtitle(label = "Expression Level") + 
+        pl_tpm <- pl_tpm + ggplot2::ggtitle(label = "Expression\nLevel") + 
             ggplot2::theme(plot.title = element_text(hjust = 0.5, 
-                                                    size = use_txt_size))
+                                                    size = use_axis_title_size))
         ## IQW ordered plots
         iqw_tpm_ord_pls <- pl_iqw | pl_tpm
         
@@ -1768,7 +1773,7 @@ for(sn in sample_names){
                      axis.text.y = element_blank(),
                      axis.ticks.length.y.left = unit(0.1, units = "cm"),
                      axis.ticks.length.x.bottom = unit(0.1, units = "cm"),
-                     axis.text.x.bottom = element_text(size = use_axis_text_size),
+                     axis.text.x.bottom = element_text(size = use_axis_text_size, colour = 'black'),
                      axis.title.x.bottom = element_text(size = use_axis_title_size),
                      legend.position = "top",
                      legend.text = element_text(size = use_legend_text_size[[sn]])

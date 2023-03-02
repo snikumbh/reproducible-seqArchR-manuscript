@@ -1,9 +1,17 @@
 ---
 title: "Supplementary for 'Identifying promoter sequence architectures via a chunking-based algorithm using non-negative matrix factorisation'"
-author: 
- - "Sarvesh Nikumbh^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, s.nikumbh@imperial.ac.uk]"
- - "Boris Lenhard^[MRC London Institute of Medical Sciences and Imperial College London, W12 0NN UK, b.lenhard@imperial.ac.uk AND Sars International Centre for Marine Molecular Biology, University of Bergen, N-5008, Bergen, Norway]"
-date: "Timestamp: `r format(Sys.time())`"
+author:
+  - Sarvesh Nikumbh:
+      email: s.nikumbh@imperial.ac.uk
+      institute: [mrclms, icl]
+      correspondence: true
+  - Boris Lenhard:
+      email: b.lenhard.imperial.ac.uk
+      institute: [mrclms, icl]
+      correspondence: true
+institute:
+  - mrclms: MRC London Institute of Medical Sciences, London, UK
+  - icl: Institute of Clinical Sciences, Faculty of Medicine, Imperial College London, Hammersmith Hospital Campus, London, UK
 geometry: "left=2cm,right=2cm,top=1.5cm,bottom=2cm"
 bibliography: seqArchR-bibliography.bib
 csl: genome-biology.csl
@@ -19,14 +27,9 @@ output:
     anchor_sections: true
     number_tables: true
     keep_tex: true
-  bookdown::html_document2:
-    code_folding: hide
-    lof: true
-    toc: true
-    toc_float: true
-    number_sections: true
-    anchor_sections: true
-    number_tables: true
+    pandoc_args:
+      - '--lua-filter=lua_filters/scholarly-metadata.lua'
+      - '--lua-filter=lua_filters/author-info-blocks.lua'
 editor_options: 
   markdown: 
     wrap: sentence
