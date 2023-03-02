@@ -1,12 +1,29 @@
 fetch_and_setup_zenodo_data <- function(){
 
-    message("Downloading data from Zenodo. This could take some time.")
-    fname <- "experiments/seqArchR-manuscript-zenodo-archive.zip"
-    utils::download.file(url = "https://zenodo.org/record/5055408/files/snikumbh/archR-v0.1.8.zip?download=1",
-        destfile = fname, method = "wget")
+    check_folders <- file.path("experiments",
+        c("data", "results", "toy-seq-generation"))
 
-    utils::unzip(fname, exdir = "experiments")
+    invisible(
+        lapply(check_folders, function(x){
+            if(!dir.exists(x)){
 
+                message("Downloading supporting data ", basename(x),
+                    " from Zenodo. This could take some time.")
+
+                fbasenames <- paste0(basename(x), ".tar.gz")
+                url_prefix <- "https://zenodo.org/record/7692742/files/"
+                url_suffix <- "?download=1"
+                src_urls <- paste0(url_prefix, fbasenames, url_suffix)
+                dest_fnames <- file.path("experiments", fbasenames)
+                # utils::download.file(url = src_urls, destfile = dest_fnames,
+                #     method = "wget")
+                # utils::untar(dest_fnames, exdir = "experiments")
+
+            }else{
+                message("Required supporting data exists: ", x)
+            }
+        })
+    )
 }
 
 get_hs_rmd <- function(){
