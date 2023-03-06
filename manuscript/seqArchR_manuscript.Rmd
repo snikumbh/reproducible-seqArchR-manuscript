@@ -59,9 +59,9 @@ in principle classify promoters into different functional groups.
 
 Due to the variability and overlap of architectures, promoter classification 
 is a difficult task that requires new approaches. 
-In this study, we present a new procedure based on nonnegative matrix 
-factorisation (NMF) and the associated software tool called seqArchR that 
-cluster promoter sequences based on their motifs at near-fixed distances from 
+In this study, we present a new method based on non-negative matrix 
+factorisation (NMF) and the associated software called seqArchR that 
+clusters promoter sequences based on their motifs at near-fixed distances from 
 a reference point, such as TSS. 
 When combined with experimental data from CAGE, seqArchR can efficiently 
 identify TSS-directing motifs, including known ones like TATA, DPE, and 
@@ -1752,7 +1752,7 @@ All entries in this matrix are non-negative, or more specifically, $0$ or $1$.
 
 Similarly, the dinucleotide profile of a sequence can be one-hot encoded.
 The input matrix dimensions in this case are $(4^2L \times n)$.
-It is known that dinucleotide profiles of DNA sequences hold more information than mononucleotide profiles (`TO-DO/BL`: citation).
+It is known that dinucleotide profiles of DNA sequences hold more information than mononucleotide profiles.
 All results reported in this article are obtained using dinucleotide profiles.
 
 As shown in Figure \@ref(fig:archR-algo-figure)B, in the decomposition of the one-hot encoded input matrix $V_{p\times n}$ to $W_{p\times k}$ and $H_{k\times n}$, $W_{p\times k}$ assigns scores to each (di)nucleotide at a given position.
