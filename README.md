@@ -1,8 +1,25 @@
 
 # Repository of supporting information for seqArchR manuscript
 
-**Citation information:** 
-<Insert here>
+**Preprint citation information:** 
+```
+@article{Nikumbh2023.03.02.530868,
+	author = {Nikumbh, Sarvesh and Lenhard, Boris},
+	title = {Identifying promoter sequence architectures via a 
+	        chunking-based algorithm using non-negative matrix factorisation},
+	elocation-id = {2023.03.02.530868},
+	year = {2023},
+	doi = {10.1101/2023.03.02.530868},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2023/03/03/2023.03.02.530868},
+	eprint = {https://www.biorxiv.org/content/early/2023/03/03/2023.03.02.530868.full.pdf},
+	journal = {bioRxiv}
+}
+```
+
+**seqArchR manuscript supporting data links**
+- *BioRxiv link (manuscript):* https://www.biorxiv.org/content/10.1101/2023.03.02.530868v1
+- *Zenodo link (data):* https://doi.org/10.5281/zenodo.7692742
 
 
 **seqArchR software links**
@@ -10,8 +27,7 @@
 - *Github link:* https://github.com/snikumbh/seqArchR
 - *Zenodo link:* https://doi.org/10.5281/zenodo.5003648
 
-**seqArchR manuscript supporting data links**
-- *Zenodo link:* https://doi.org/10.5281/zenodo.7692742
+
 
 
 
